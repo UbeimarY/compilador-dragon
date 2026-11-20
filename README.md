@@ -5,6 +5,14 @@ Docente: Mg. Gabriel Guerrero Arellano.
 
 **Integrantes:** _(completar)_
 
+[![Pruebas](https://github.com/UbeimarY/compilador-dragon/actions/workflows/pruebas.yml/badge.svg)](https://github.com/UbeimarY/compilador-dragon/actions/workflows/pruebas.yml)
+[![Playground](https://github.com/UbeimarY/compilador-dragon/actions/workflows/playground.yml/badge.svg)](https://ubeimary.github.io/compilador-dragon/)
+![Python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue)
+
+### 🌐 [Pruébelo en el navegador → ubeimary.github.io/compilador-dragon](https://ubeimary.github.io/compilador-dragon/)
+
+El **Dragon Playground** ejecuta el compilador completo dentro del navegador (con [Pyodide](https://pyodide.org)), sin instalar nada: se escribe código Dragon, se compila con `Ctrl + Enter` y cada fase aparece en su propia pestaña. Las líneas con errores se marcan en el editor.
+
 **Dragon** es un lenguaje imperativo pequeño, con palabras clave en español y tipos estáticos. Este repositorio contiene su **compilador completo**, que lleva un archivo fuente `.drg` por todas las fases del curso:
 
 ```
@@ -57,6 +65,21 @@ python -m unittest -v
 ```
 
 > En macOS/Linux puede ser necesario usar `python3` en lugar de `python`.
+
+### Otras formas de ejecutarlo
+
+```bash
+# Como módulo de Python
+python -m dragon ejemplos/programa_correcto.drg
+
+# Instalado con pip: queda disponible el comando `dragon` en cualquier carpeta
+pip install git+https://github.com/UbeimarY/compilador-dragon.git
+dragon mi_programa.drg
+```
+
+### Integración continua
+
+Con cada commit, **GitHub Actions** ejecuta las 55 pruebas, compila todos los ejemplos e instala el paquete con `pip` en **Windows, Linux y macOS con Python 3.10, 3.11, 3.12 y 3.13**: 12 combinaciones. Otro flujo publica el playground en GitHub Pages. Además, **SonarCloud** analiza la calidad y la seguridad del código en cada commit.
 
 ### Opciones de la línea de comandos
 
@@ -376,8 +399,12 @@ Son 55 pruebas en `tests/`: lexer (7), parser (8), semántico (15), optimizador 
 
 ```
 compilador-dragon/
-├── main.py                    # Punto de entrada: ejecuta y muestra todas las fases
+├── main.py                    # Punto de entrada: python main.py archivo.drg
+├── pyproject.toml             # Empaquetado: pip install → comando `dragon`
+├── web/index.html             # Dragon Playground (se publica en GitHub Pages)
+├── .github/workflows/         # CI: pruebas en 3 sistemas × 4 versiones y despliegue del playground
 ├── dragon/
+│   ├── cli.py                 # Interfaz de línea de comandos (muestra todas las fases)
 │   ├── lexer.py               # Fase 1: análisis léxico
 │   ├── ast_nodos.py           # Nodos del AST y dibujo del árbol
 │   ├── parser.py              # Fase 2: análisis sintáctico (descenso recursivo)

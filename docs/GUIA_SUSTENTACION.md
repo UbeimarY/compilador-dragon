@@ -12,6 +12,7 @@
 | 9–10 | Fase 7 | `python main.py ejemplos/programa_correcto.drg --fases 7` | "Ejecutamos TAC, TAC optimizado y ensamblador en máquinas virtuales: las tres salidas coinciden, así que la semántica se preservó." |
 | 10–12 | Estrés | `python main.py ejemplos/programa_estres.drg` | "16 errores de los tres tipos, cada uno con su línea, su columna y una marca `^`, sin detener el programa ni mostrar tracebacks." |
 | Cierre | Pruebas | `python -m unittest -v` | "55 pruebas automáticas cubren todas las fases." |
+| Extra | Playground y CI | abrir https://ubeimary.github.io/compilador-dragon/ y la pestaña **Actions** del repositorio | "El mismo compilador corre en el navegador con Pyodide, y con cada commit GitHub Actions ejecuta las pruebas en Windows, Linux y macOS. SonarCloud valida la seguridad del código." |
 
 ---
 
