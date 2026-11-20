@@ -114,6 +114,8 @@
     display: flex; flex-wrap: wrap; gap: 6px 18px;
   }
   footer code { font-family: var(--mono); color: var(--texto); }
+  /* El atajo `font:` reinicia las ligaduras: se desactivan explícitamente para que <= no se vea como ≤ */
+  textarea, pre, .gutter, code { font-variant-ligatures: none; }
 </style>
 </head>
 <body>
