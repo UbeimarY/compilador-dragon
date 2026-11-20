@@ -21,6 +21,12 @@ ejecutan en ciclo hasta que ninguna produce cambios (punto fijo):
 
 Las optimizaciones conservan la semántica: el módulo emulador ejecuta el TAC
 antes y después de optimizar y verifica que la salida sea idéntica.
+
+Cuidados con funciones y heap:
+* Una llamada (`call`) puede modificar variables globales e imprimir: se
+  trata como frontera de bloque básico y nunca se elimina como código muerto.
+* La concatenación de textos RESERVA memoria en el heap (malloc), así que no
+  se pliega en compilación: cambiaría qué bloques se pueden liberar.
 """
 
 from __future__ import annotations
@@ -32,6 +38,8 @@ from .tac import BINARIOS, UNARIOS, Const, Cuadrupla, ProgramaTAC
 from .utilidades import ErrorEjecucion, operar, operar_unaria
 
 ES_TEMPORAL = re.compile(r"^t\d+$")
+FRONTERAS = ("label", "func", "fin_func")          # inicio de un bloque básico
+SALTOS = ("goto", "if_false", "call", "return", "fin")  # fin de un bloque básico
 NUMERICOS = ("entero", "real")
 
 
@@ -86,12 +94,12 @@ class Optimizador:
         conocidos: dict[str, object] = {}  # nombre → Const (o nombre, para copias entre temporales)
 
         for i, q in enumerate(self.instr):
-            if q.op == "label":
+            if q.op in FRONTERAS:
                 conocidos.clear()
                 continue
 
             # ---- Propagación: reemplazar operandos con valores conocidos
-            for campo in ("arg1", "arg2"):
+            for campo in (("arg2",) if q.op == "call" else ("arg1", "arg2")):
                 arg = getattr(q, campo)
                 if isinstance(arg, str) and arg in conocidos:
                     nuevo = conocidos[arg]
@@ -118,12 +126,14 @@ class Optimizador:
                         conocidos[definido] = q.arg1
                     elif _es_temporal(definido) and isinstance(q.arg1, str) and q.arg1 != definido:
                         conocidos[definido] = q.arg1
-            if q.op in ("goto", "if_false"):
+            if q.op in SALTOS:
                 conocidos.clear()
         return cambio
 
     def _plegar(self, q: Cuadrupla) -> Cuadrupla | None:
         tipo = self.p.tipos.get(q.res, "entero")
+        if q.op == "+" and tipo == "texto":
+            return None  # concatenar reserva memoria en el heap: se hace en ejecución
         try:
             if q.op in BINARIOS and isinstance(q.arg1, Const) and isinstance(q.arg2, Const):
                 valor = operar(q.op, q.arg1.valor, q.arg2.valor)
@@ -185,14 +195,14 @@ class Optimizador:
     def _codigo_inalcanzable(self) -> bool:
         cambio, resultado, inalcanzable = False, [], False
         for q in self.instr:
-            if q.op == "label":
+            if q.op in FRONTERAS:
                 inalcanzable = False
             elif inalcanzable:
                 self._anotar("Código inalcanzable", f"{str(q).strip()}  →  (eliminado)")
                 cambio = True
                 continue
             resultado.append(q)
-            if q.op == "goto":
+            if q.op in ("goto", "return", "fin"):
                 inalcanzable = True
         self.p.instrucciones = resultado
         return cambio
@@ -256,7 +266,7 @@ class Optimizador:
         for q in self.instr:
             d = q.define()
             puede_fallar = q.op in ("/", "%") and not isinstance(q.arg2, Const)
-            if d and usos[d] == 0 and not puede_fallar:
+            if d and usos[d] == 0 and not puede_fallar and q.op != "call":
                 self._anotar("Código muerto", f"{str(q).strip()}  →  (eliminado: '{d}' nunca se lee)")
                 cambio = True
                 continue

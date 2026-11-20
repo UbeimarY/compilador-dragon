@@ -26,6 +26,18 @@ estilo x86 (Intel). Resuelve los tres retos del backend (Semana 10):
    más lejos (criterio de Belady) y se guarda en la pila:
        MOV [FP-8], R1        ; SPILL
    Cuando la víctima vuelve a necesitarse se lee desde la pila.
+
+4. FUNCIONES Y MARCOS DE PILA (Semana 8) — convención de llamada:
+       llamador:  PUSH arg1 ... PUSH argN    los argumentos van a la pila
+                  CALL fn_f                  apila la dirección de retorno
+                  ADD SP, 8*N                el llamador limpia los argumentos
+                  MOV R0, RV                 el resultado llega en RV (como EAX)
+       función:   PUSH FP / MOV FP, SP       prólogo: nuevo marco
+                  SUB SP, tamaño             variables locales + ranuras de spill
+                  ... [FP+16] = último argumento, [FP-8] = primera local ...
+                  MOV SP, FP / POP FP / RET  epílogo
+   Los registros R0..Rn-1 son "caller-saved": antes de un CALL, el llamador
+   guarda en su marco los temporales que siguen vivos después de la llamada.
 """
 
 from __future__ import annotations
@@ -77,6 +89,7 @@ class CodigoObjetivo:
     num_registros: int
     spills: int = 0
     tamanio_marco: int = 0
+    marcos: list = field(default_factory=list)
 
     def como_texto(self) -> str:
         partes = ["section .data"] + [f"    {d}" for d in self.datos]
@@ -101,6 +114,9 @@ class GeneradorCodigo:
         self.spills = 0
         self._usos: dict[str, list[int]] = {}
         self._i = 0
+        self._nlocales = 0
+        self._funcion_actual: Optional[str] = None
+        self.marcos: list[tuple[str, int, int, int]] = []   # (función, locales, ranuras, bytes)
 
     # ------------------------------------------------------------ utilidades
     def _emitir(self, opcode: str, *operandos: str, comentario: str = "") -> None:
@@ -139,7 +155,17 @@ class GeneradorCodigo:
             return self._constante(x)  # texto: dirección de la cadena
         if self._es_temporal(x):
             return self.ubicacion[x]
-        return f"[{x}]"
+        return self._direccion(x)
+
+    def _direccion(self, nombre: str) -> str:
+        """Dirección de una variable: global en .data o local/parámetro en el marco."""
+        if nombre in self.p.marco:
+            return f"[FP{self.p.marco[nombre]:+d}]"
+        return f"[{nombre}]"
+
+    def _nueva_ranura(self) -> str:
+        self._ranuras += 1
+        return f"[FP-{8 * (self._nlocales + self._ranuras)}]"
 
     def _en_memoria(self, operando: str) -> bool:
         return operando.startswith("[")
@@ -157,8 +183,7 @@ class GeneradorCodigo:
         candidatos = [r for r in self.registros if r not in fijos]
         victima_reg = max(candidatos, key=lambda r: self._proximo_uso(self.contenido[r], self._i))
         victima = self.contenido[victima_reg]
-        self._ranuras += 1
-        ranura = f"[FP-{8 * self._ranuras}]"
+        ranura = self._nueva_ranura()
         proximo = self._proximo_uso(victima, self._i)
         self._emitir("MOV", ranura, victima_reg,
                      comentario=f"SPILL: {victima} se desaloja a la pila (se usa de nuevo en TAC {int(proximo):03d})")
@@ -200,7 +225,7 @@ class GeneradorCodigo:
 
     def _guardar_resultado(self, q: Cuadrupla, reg: str) -> None:
         if not self._es_temporal(q.res):  # variable de usuario: vuelve a memoria
-            self._emitir("MOV", f"[{q.res}]", reg, comentario=f"{q.res} = resultado")
+            self._emitir("MOV", self._direccion(q.res), reg, comentario=f"{q.res} = resultado")
             self._liberar_registro(reg)
 
     # ------------------------------------------------------------- traducción
@@ -211,33 +236,78 @@ class GeneradorCodigo:
                 if self._es_temporal(u):
                     self._usos.setdefault(u, []).append(i)
 
-        for i, q in enumerate(instrucciones):
-            self._i = i
-            self._traducir(q)
+        # Segmentos: el programa principal (hasta 'fin') y cada función
+        fin_main = next((i for i, q in enumerate(instrucciones) if q.op == "fin"), len(instrucciones))
+        codigo = self._segmento(range(0, fin_main), None)
+        i = fin_main + 1
+        while i < len(instrucciones):
+            if instrucciones[i].op == "func":
+                j = i
+                while instrucciones[j].op != "fin_func":
+                    j += 1
+                codigo += self._segmento(range(i + 1, j), instrucciones[i].res)
+                i = j
+            i += 1
 
-        cuerpo = self.salida
-        self.salida = []
-        self._emitir("PUSH", "FP", comentario="prólogo: guarda el marco anterior")
-        self._emitir("MOV", "FP", "SP")
-        if self._ranuras:
-            self._emitir("SUB", "SP", str(8 * self._ranuras),
-                         comentario=f"reserva {self._ranuras} ranura(s) de 8 bytes para SPILL")
-        prologo = self.salida
-        self.salida = []
-        self._emitir("MOV", "SP", "FP", comentario="epílogo: libera el marco")
-        self._emitir("POP", "FP")
-        self._emitir("HLT", comentario="fin del programa")
-
+        principal = next((m for m in self.marcos if m[0] == "main"), ("main", 0, 0, 0))
         return CodigoObjetivo(
             datos=self._seccion_datos(),
-            instrucciones=prologo + cuerpo + self.salida,
+            instrucciones=codigo,
             constantes=self.constantes,
             valores_iniciales={s.nombre_unico: valor_por_defecto(s.tipo) for s in self.p.variables},
             eventos=self.eventos,
             num_registros=len(self.registros),
             spills=self.spills,
-            tamanio_marco=8 * self._ranuras,
+            tamanio_marco=principal[3],
+            marcos=list(self.marcos),
         )
+
+    def _segmento(self, indices: range, funcion: Optional[str]) -> list[InstruccionASM]:
+        """Traduce el programa principal o una función, con su propio marco de pila."""
+        self.contenido = {r: None for r in self.registros}
+        self.ubicacion = {}
+        self._ranuras = 0
+        self._funcion_actual = funcion
+        info = self.p.funciones.get(funcion) if funcion else None
+        self._nlocales = len(info.locales) if info else 0
+        if funcion:
+            self.eventos.append(f"── función {funcion} " + "─" * 30)
+
+        self.salida = []
+        for i in indices:
+            self._i = i
+            self._traducir(self.p.instrucciones[i])
+        cuerpo = self.salida
+
+        bytes_marco = 8 * (self._nlocales + self._ranuras)
+        self.marcos.append((funcion or "main", self._nlocales, self._ranuras, bytes_marco))
+        self.salida = []
+        if funcion:
+            params = ", ".join(info.parametros) if info else ""
+            self._emitir("LABEL", f"fn_{funcion}")
+            self._emitir("PUSH", "FP", comentario=f"función {funcion}({params}): prólogo")
+        else:
+            self._emitir("PUSH", "FP", comentario="prólogo: guarda el marco anterior")
+        self._emitir("MOV", "FP", "SP")
+        if bytes_marco:
+            partes = []
+            if self._nlocales:
+                partes.append(f"{self._nlocales} local(es)")
+            if self._ranuras:
+                partes.append(f"{self._ranuras} ranura(s) de SPILL")
+            self._emitir("SUB", "SP", str(bytes_marco), comentario=f"reserva {' + '.join(partes)} (8 bytes c/u)")
+        prologo = self.salida
+        self.salida = []
+        if funcion:
+            self._emitir("LABEL", f"fn_{funcion}_fin")
+            self._emitir("MOV", "SP", "FP", comentario="epílogo: libera el marco")
+            self._emitir("POP", "FP")
+            self._emitir("RET", comentario=f"vuelve al llamador de {funcion}")
+        else:
+            self._emitir("MOV", "SP", "FP", comentario="epílogo: libera el marco")
+            self._emitir("POP", "FP")
+            self._emitir("HLT", comentario="fin del programa")
+        return prologo + cuerpo + self.salida
 
     def _seccion_datos(self) -> list[str]:
         lineas = []
@@ -264,6 +334,27 @@ class GeneradorCodigo:
         if q.op == "label":
             self._emitir("LABEL", q.res)
             return
+        if q.op == "param":
+            self._emitir("PUSH", self._operando(q.arg1), comentario=comentario)
+            self._liberar_muertos(q.arg1)
+            return
+        if q.op == "call":
+            self._llamada(q, comentario)
+            return
+        if q.op == "return":
+            if q.arg1 is not None:
+                self._emitir("MOV", "RV", self._operando(q.arg1), comentario=comentario + "  (valor de retorno en RV)")
+                self._liberar_muertos(q.arg1)
+            siguiente = self.p.instrucciones[self._i + 1] if self._i + 1 < len(self.p.instrucciones) else None
+            if siguiente is None or siguiente.op != "fin_func":
+                self._emitir("JMP", f"fn_{self._funcion_actual}_fin",
+                             comentario="" if q.arg1 is not None else comentario)
+            return
+        if q.op == "free":
+            self._emitir("PARAM", self._operando(q.arg1), comentario=comentario)
+            self._emitir("CALL", "liberar", comentario="free: devuelve el bloque al heap")
+            self._liberar_muertos(q.arg1)
+            return
         if q.op == "goto":
             self._emitir("JMP", q.res, comentario=comentario)
             return
@@ -287,6 +378,27 @@ class GeneradorCodigo:
             return
         raise ValueError(f"Operación TAC no soportada: {q}")
 
+    def _llamada(self, q: Cuadrupla, comentario: str) -> None:
+        # Registros caller-saved: se guardan los temporales que siguen vivos
+        for r in self.registros:
+            t = self.contenido[r]
+            if t is not None and self._es_temporal(t) and self._proximo_uso(t, self._i) != INFINITO:
+                ranura = self._nueva_ranura()
+                self._emitir("MOV", ranura, r, comentario=f"guarda {t} antes de la llamada (caller-saved)")
+                self.ubicacion[t] = ranura
+                self.contenido[r] = None
+                self.eventos.append(f"TAC {self._i:03d}: GUARDA {t} {r} → {ranura} (sigue vivo después de CALL)")
+        self._emitir("CALL", f"fn_{q.arg1}", comentario=comentario)
+        if q.arg2:
+            self._emitir("ADD", "SP", str(8 * q.arg2), comentario=f"descarta {q.arg2} argumento(s)")
+        if q.res is None:
+            return
+        if self._es_temporal(q.res):
+            reg = self._asignar(q.res, set())
+            self._emitir("MOV", reg, "RV", comentario=f"{q.res} = valor retornado")
+        else:
+            self._emitir("MOV", self._direccion(q.res), "RV", comentario=f"{q.res} = valor retornado")
+
     def _salto_condicional(self, q: Cuadrupla, comentario: str) -> None:
         cond = self._operando(q.arg1)
         if isinstance(q.arg1, Const):  # solo ocurre si no se optimizó
@@ -306,7 +418,7 @@ class GeneradorCodigo:
                 self._emitir("MOV", reg, origen, comentario=comentario)
             self._liberar_muertos(q.arg1)
             return
-        destino = f"[{q.res}]"
+        destino = self._direccion(q.res)
         if self._en_memoria(origen):  # x86 no permite MOV memoria, memoria
             reg = self._asignar("·tmp", self._registros_de(q.arg1))
             self._emitir("MOV", reg, origen, comentario=comentario)

@@ -114,6 +114,9 @@ def compilar(ruta: Path, carpeta_salida: str, args: argparse.Namespace) -> int:
         titulo(3, "ANÁLISIS SEMÁNTICO (Tabla de símbolos y tipos)")
         subtitulo("Tabla de símbolos")
         print(semantico.tabla.como_texto())
+        if semantico.funciones:
+            subtitulo("Funciones declaradas (firmas)")
+            print(semantico.funciones_como_texto())
         subtitulo("Traza de ámbitos (pila de scopes)")
         print("\n".join(semantico.tabla.eventos) or "(sin declaraciones)")
         subtitulo("Coerciones implícitas insertadas")
@@ -137,7 +140,7 @@ def compilar(ruta: Path, carpeta_salida: str, args: argparse.Namespace) -> int:
         return 1
 
     # ------------------------------------------------------------ FASE 4
-    tac = generar_tac(ast, semantico.tabla.todos)
+    tac = generar_tac(ast, semantico.tabla.todos, semantico.funciones)
     if ver(4):
         titulo(4, "CÓDIGO INTERMEDIO (TAC en cuádruplas)")
         print(tac.como_texto())
@@ -172,6 +175,10 @@ def compilar(ruta: Path, carpeta_salida: str, args: argparse.Namespace) -> int:
         estado = Color.aviso(f"{codigo.spills} spill(s) → marco de pila de {codigo.tamanio_marco} bytes") \
             if codigo.spills else Color.ok("0 spills: todos los temporales cupieron en registros")
         print(f"\n  {estado}")
+        if len(codigo.marcos) > 1:
+            subtitulo("Marcos de pila (stack frames)")
+            for nombre, locales, ranuras, bytes_marco in codigo.marcos:
+                print(f"  {nombre:<20} {locales} local(es) + {ranuras} ranura(s) de spill = {bytes_marco} bytes")
         subtitulo("Ensamblador generado")
         print(codigo.como_texto())
 
@@ -190,7 +197,12 @@ def compilar(ruta: Path, carpeta_salida: str, args: argparse.Namespace) -> int:
         for nombre, valor in ejec_asm.memoria.items():
             if tac.tipos.get(nombre) == "booleano":
                 valor = bool(valor)  # en la máquina los booleanos son 1 / 0
-            print(f"  {nombre:<18}= {formatear_valor(valor)}  ({tac.tipos.get(nombre)})")
+            print(f"  {nombre:<18}= {ejec_asm.heap.mostrar(valor)}  ({tac.tipos.get(nombre)})")
+        if ejec_asm.heap.reservas:
+            subtitulo("Heap (memoria dinámica)")
+            print(f"  {ejec_asm.heap.resumen()}")
+            for direccion, contenido, tam in ejec_asm.heap.fugas():
+                print(Color.aviso(f"  fuga: bloque 0x{direccion:04X} ({tam} bytes) con \"{contenido}\" nunca se liberó"))
         subtitulo("Comparación de las tres ejecuciones")
         for nombre, r in (("TAC original", ejec_tac), ("TAC optimizado", ejec_opt), ("Ensamblador", ejec_asm)):
             print(f"  {nombre:<16}{len(r.salida):>3} líneas impresas · {r.pasos:>6} pasos"

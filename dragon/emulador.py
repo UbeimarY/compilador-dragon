@@ -22,9 +22,9 @@ from dataclasses import dataclass, field
 
 from .codegen import CodigoObjetivo
 from .tac import Const, ProgramaTAC
-from .utilidades import (ErrorEjecucion, division_entera, formatear_valor,
-                         modulo_entero, operar, operar_unaria,
-                         valor_por_defecto)
+from .utilidades import (ErrorEjecucion, Heap, Puntero, division_entera,
+                         formatear_valor, modulo_entero, operar,
+                         operar_con_heap, operar_unaria, valor_por_defecto)
 
 LIMITE_PASOS = 1_000_000
 
@@ -35,6 +35,7 @@ class ResultadoEjecucion:
     memoria: dict = field(default_factory=dict)
     pasos: int = 0
     error: str | None = None
+    heap: Heap | None = None
 
     @property
     def ok(self) -> bool:
@@ -43,21 +44,44 @@ class ResultadoEjecucion:
 
 # ======================================================================= TAC
 class EmuladorTAC:
+    """Ejecuta cuádruplas. Las variables globales viven en `memoria`; los
+    parámetros, las variables locales y los temporales viven en el MARCO de la
+    llamada actual (una pila de diccionarios), lo que permite la recursión."""
+
+    LIMITE_LLAMADAS = 500
+
     def __init__(self, programa: ProgramaTAC):
         self.p = programa
-        self.memoria = {s.nombre_unico: valor_por_defecto(s.tipo) for s in programa.variables}
+        self.heap = Heap()
+        self.globales = programa.globales
+        self.memoria = {s.nombre_unico: self._inicial(s.tipo) for s in programa.variables}
+        self.marcos: list[dict] = [{}]
+        self.llamadas: list[tuple[int, str | None]] = []
+        self.argumentos: list = []
+
+    def _inicial(self, tipo: str):
+        return self.heap.vacia if tipo == "texto" else valor_por_defecto(tipo)
 
     def _valor(self, x):
         if isinstance(x, Const):
-            return x.valor
-        if x not in self.memoria:
-            return valor_por_defecto(self.p.tipos.get(x, "entero"))
-        return self.memoria[x]
+            return self.heap.estatico(x.valor) if x.tipo == "texto" else x.valor
+        if x in self.globales:
+            return self.memoria[x]
+        marco = self.marcos[-1]
+        if x not in marco:
+            return self._inicial(self.p.tipos.get(x, "entero"))
+        return marco[x]
+
+    def _escribir(self, nombre: str, valor) -> None:
+        if nombre in self.globales:
+            self.memoria[nombre] = valor
+        else:
+            self.marcos[-1][nombre] = valor
 
     def ejecutar(self) -> ResultadoEjecucion:
         r = ResultadoEjecucion()
         instr = self.p.instrucciones
-        etiquetas = {q.res: i for i, q in enumerate(instr) if q.op == "label"}
+        etiquetas = {q.res: i for i, q in enumerate(instr) if q.op in ("label", "func")}
         pc = 0
         try:
             while pc < len(instr):
@@ -66,56 +90,126 @@ class EmuladorTAC:
                     raise ErrorEjecucion(f"Se superaron {LIMITE_PASOS} pasos: posible ciclo infinito")
                 q = instr[pc]
                 pc += 1
-                if q.op == "label":
+                if q.op in ("label", "func", "fin_func"):
                     continue
+                if q.op == "fin":
+                    break
                 if q.op == "goto":
                     pc = etiquetas[q.res]
                 elif q.op == "if_false":
                     if not self._valor(q.arg1):
                         pc = etiquetas[q.res]
                 elif q.op == "print":
-                    r.salida.append(formatear_valor(self._valor(q.arg1)))
+                    r.salida.append(formatear_valor(self.heap.leer(self._valor(q.arg1))
+                                                    if self.p.tipo_de(q.arg1) == "texto" else self._valor(q.arg1)))
+                elif q.op == "param":
+                    self.argumentos.append(self._valor(q.arg1))
+                elif q.op == "call":
+                    if len(self.llamadas) >= self.LIMITE_LLAMADAS:
+                        raise ErrorEjecucion(f"Stack Overflow: más de {self.LIMITE_LLAMADAS} llamadas anidadas "
+                                             f"(¿recursión infinita en '{q.arg1}'?)")
+                    info = self.p.funciones[q.arg1]
+                    n = q.arg2
+                    valores = self.argumentos[len(self.argumentos) - n:] if n else []
+                    del self.argumentos[len(self.argumentos) - n:]
+                    self.llamadas.append((pc, q.res))
+                    self.marcos.append(dict(zip(info.parametros, valores)))
+                    pc = etiquetas[q.arg1] + 1
+                elif q.op == "return":
+                    valor = self._valor(q.arg1) if q.arg1 is not None else None
+                    if not self.llamadas:
+                        break
+                    pc, destino = self.llamadas.pop()
+                    self.marcos.pop()
+                    if destino is not None:
+                        self._escribir(destino, valor if valor is not None
+                                       else self._inicial(self.p.tipos.get(destino, "entero")))
+                elif q.op == "free":
+                    self.heap.liberar(self._valor(q.arg1))
                 elif q.op == "=":
-                    self.memoria[q.res] = self._valor(q.arg1)
+                    self._escribir(q.res, self._valor(q.arg1))
                 elif q.op in ("neg", "not", "itof"):
-                    self.memoria[q.res] = operar_unaria(q.op, self._valor(q.arg1))
+                    self._escribir(q.res, operar_unaria(q.op, self._valor(q.arg1)))
                 else:
-                    self.memoria[q.res] = operar(q.op, self._valor(q.arg1), self._valor(q.arg2))
+                    self._escribir(q.res, operar_con_heap(self.heap, q.op, self._valor(q.arg1), self._valor(q.arg2)))
         except ErrorEjecucion as e:
             r.error = f"{e} (instrucción TAC {pc - 1:03d})"
-        r.memoria = {k: v for k, v in self.memoria.items() if not k.startswith("t") or not k[1:].isdigit()}
+        r.memoria = dict(self.memoria)
+        r.heap = self.heap
         return r
 
 
 # ======================================================================= ASM
 class EmuladorASM:
+    """CPU simulada que ejecuta el ensamblador generado.
+
+    * Registros R0..Rn-1, RV (valor de retorno), SP (tope de la pila) y FP (marco).
+    * Memoria con nombre para .data y las constantes; una PILA real direccionada
+      por números que crece hacia abajo: PUSH/POP, CALL/RET y [FP±k] la usan.
+    * Un heap para los textos (Semana 8).
+    """
+
+    TOPE_PILA = 0x20000
+    LIMITE_PILA = 0x20000 - 64 * 1024   # 64 KB de pila: más allá hay Stack Overflow
+
     def __init__(self, codigo: CodigoObjetivo):
         self.c = codigo
+        self.heap = Heap()
         self.registros = {f"R{i}": 0 for i in range(codigo.num_registros)}
-        self.memoria: dict[str, object] = dict(codigo.valores_iniciales)
-        self.memoria.update(codigo.constantes)
+        self.registros.update({"RV": 0, "SP": self.TOPE_PILA, "FP": self.TOPE_PILA})
+        self.memoria: dict[str, object] = {
+            k: (self.heap.estatico(v) if isinstance(v, str) else v) for k, v in codigo.valores_iniciales.items()}
+        self.memoria.update({k: v for k, v in codigo.constantes.items() if not isinstance(v, str)})
+        self.pila: dict[int, object] = {}
         self.comparacion: tuple = (0, 0)
         self.parametros: list = []
+
+    def _direccion_pila(self, operando: str):
+        """'[FP-8]' → dirección numérica; None si no es un acceso a la pila."""
+        interior = operando[1:-1]
+        if interior.startswith(("FP", "SP")) and len(interior) > 2:
+            return self.registros[interior[:2]] + int(interior[2:])
+        return None
 
     def _leer(self, operando: str):
         if operando in self.registros:
             return self.registros[operando]
         if operando.startswith("["):
+            direccion = self._direccion_pila(operando)
+            if direccion is not None:
+                if direccion not in self.pila:
+                    raise ErrorEjecucion(f"Lectura de una posición de pila sin inicializar {operando}")
+                return self.pila[direccion]
             clave = operando[1:-1]
             if clave not in self.memoria:
                 raise ErrorEjecucion(f"Lectura de memoria no inicializada {operando}")
             return self.memoria[clave]
-        if operando in self.c.constantes:  # dirección de una cadena (str_0)
-            return self.c.constantes[operando]
+        if operando in self.c.constantes:  # dirección de una cadena constante (str_0)
+            return self.heap.estatico(self.c.constantes[operando])
         return int(operando)
 
     def _escribir(self, operando: str, valor) -> None:
         if operando in self.registros:
             self.registros[operando] = valor
+            if operando == "SP" and valor < self.LIMITE_PILA:
+                raise ErrorEjecucion("Stack Overflow: la pila superó los 64 KB (¿recursión infinita?)")
         elif operando.startswith("["):
-            self.memoria[operando[1:-1]] = valor
+            direccion = self._direccion_pila(operando)
+            if direccion is not None:
+                self.pila[direccion] = valor
+            else:
+                self.memoria[operando[1:-1]] = valor
         else:
             raise ErrorEjecucion(f"Destino no válido: {operando}")
+
+    def _push(self, valor) -> None:
+        self._escribir("SP", self.registros["SP"] - 8)
+        self.pila[self.registros["SP"]] = valor
+
+    def _pop(self):
+        valor = self.pila.get(self.registros["SP"])
+        self.registros["SP"] += 8
+        return valor
 
     def ejecutar(self) -> ResultadoEjecucion:
         r = ResultadoEjecucion()
@@ -132,11 +226,17 @@ class EmuladorASM:
                 op, ops = ins.opcode, ins.operandos
                 if op == "HLT":
                     break
-                if op in ("LABEL", "PUSH", "POP") or (ops and ops[0] in ("FP", "SP")):
-                    continue  # el marco de pila se modela con las ranuras [FP-k]
+                if op == "LABEL":
+                    continue
                 if op == "MOV":
                     self._escribir(ops[0], self._leer(ops[1]))
-                elif op in ("ADD", "FADD", "CONCAT"):
+                elif op == "PUSH":
+                    self._push(self._leer(ops[0]))
+                elif op == "POP":
+                    self._escribir(ops[0], self._pop())
+                elif op == "CONCAT":
+                    self._escribir(ops[0], self.heap.concatenar(self._leer(ops[0]), self._leer(ops[1])))
+                elif op in ("ADD", "FADD"):
                     self._escribir(ops[0], self._leer(ops[0]) + self._leer(ops[1]))
                 elif op in ("SUB", "FSUB"):
                     self._escribir(ops[0], self._leer(ops[0]) - self._leer(ops[1]))
@@ -159,8 +259,10 @@ class EmuladorASM:
                     self._escribir(ops[0], int(bool(self._leer(ops[0])) or bool(self._leer(ops[1]))))
                 elif op == "CVTSI2SD":
                     self._escribir(ops[0], float(self._leer(ops[1])))
-                elif op in ("CMP", "FCMP", "SCMP"):
+                elif op in ("CMP", "FCMP"):
                     self.comparacion = (self._leer(ops[0]), self._leer(ops[1]))
+                elif op == "SCMP":  # compara el CONTENIDO de dos cadenas
+                    self.comparacion = (self.heap.leer(self._leer(ops[0])), self.heap.leer(self._leer(ops[1])))
                 elif op.startswith("SET"):
                     a, b = self.comparacion
                     simbolo = {"SETL": "<", "SETG": ">", "SETLE": "<=", "SETGE": ">=", "SETE": "==", "SETNE": "!="}[op]
@@ -174,15 +276,30 @@ class EmuladorASM:
                 elif op == "PARAM":
                     self.parametros.append(self._leer(ops[0]))
                 elif op == "CALL":
-                    valor = self.parametros.pop()
-                    if ops[0] == "imprimir_booleano":
-                        valor = bool(valor)
-                    elif ops[0] == "imprimir_real":
-                        valor = float(valor)
-                    r.salida.append(formatear_valor(valor))
+                    destino = ops[0]
+                    if destino in etiquetas:          # función del usuario
+                        self._push(pc)                # dirección de retorno
+                        pc = etiquetas[destino]
+                    elif destino == "liberar":
+                        self.heap.liberar(self.parametros.pop())
+                    elif destino.startswith("imprimir_"):
+                        valor = self.parametros.pop()
+                        if destino == "imprimir_booleano":
+                            valor = bool(valor)
+                        elif destino == "imprimir_real":
+                            valor = float(valor)
+                        elif destino == "imprimir_texto":
+                            valor = self.heap.leer(valor)
+                        r.salida.append(formatear_valor(valor))
+                    else:
+                        raise ErrorEjecucion(f"Rutina desconocida {destino}")
+                elif op == "RET":
+                    pc = self._pop()
                 else:
                     raise ErrorEjecucion(f"Instrucción desconocida {op}")
         except ErrorEjecucion as e:
-            r.error = f"{e} (instrucción ASM: {str(instr[pc - 1]).strip()})"
+            fallida = instr[pc - 1]
+            r.error = f"{e} (instrucción ASM: {fallida.opcode} {', '.join(fallida.operandos)})"
         r.memoria = {k: v for k, v in self.memoria.items() if k in self.c.valores_iniciales}
+        r.heap = self.heap
         return r
