@@ -10,6 +10,7 @@ Opciones:
     --registros N     Número de registros físicos de la CPU simulada (por defecto 3, mínimo 2)
     --sin-optimizar   Genera el ensamblador directamente desde el TAC sin optimizar
     --automatas       Muestra los autómatas del lexer: RegEx → NFA → DFA → DFA mínimo
+    --interpretar     Ejecuta el programa con el intérprete del AST (sin compilarlo)
     --fases 1,4,6     Muestra solo las fases indicadas (1 a 7)
     --sin-color       Desactiva los colores de la consola
     --salida DIR      Carpeta donde se guardan los archivos .tac y .asm (por defecto: salida/)
@@ -32,6 +33,8 @@ from .ast_nodos import arbol_ascii
 from .automatas import construir_automatas, verificar_tokens
 from .codegen import generar_codigo
 from .emulador import EmuladorASM, EmuladorTAC
+from .flujo import construir_grafo, grafo_como_texto, grafo_dot
+from .interprete import interpretar
 from .errores import LEXICO, SEMANTICO, SINTACTICO, ReporteErrores
 from .lexer import Lexer
 from .optimizador import optimizar
@@ -172,6 +175,19 @@ def compilar(ruta: Path, carpeta_salida: str, args: argparse.Namespace) -> int:
         print("No se genera código intermedio ni ensamblador para un programa con errores.")
         return 1
 
+    if args.interpretar:
+        titulo(None, "INTÉRPRETE DEL AST (sin compilar: recorre el árbol y lo ejecuta)")
+        resultado = interpretar(ast, semantico.tabla.todos, semantico.funciones)
+        for linea in resultado.salida:
+            print(f"  > {linea}")
+        if resultado.error:
+            print(Color.error(f"  [ERROR DE EJECUCIÓN] {resultado.error}"))
+        if resultado.heap.reservas:
+            print(f"\n  Heap: {resultado.heap.resumen()}")
+        print(Color.tenue(f"\n  {resultado.pasos} nodos evaluados. Un intérprete no genera código: "
+                          "vuelve a recorrer el árbol en cada ejecución."))
+        return 0 if resultado.ok else 2
+
     # ------------------------------------------------------------ FASE 4
     tac = generar_tac(ast, semantico.tabla.todos, semantico.funciones)
     if ver(4):
@@ -196,6 +212,8 @@ def compilar(ruta: Path, carpeta_salida: str, args: argparse.Namespace) -> int:
         antes, despues = len(tac.instrucciones), len(tac_optimizado.instrucciones)
         reduccion = 100 * (antes - despues) / antes if antes else 0
         print(Color.ok(f"\n  Instrucciones TAC: {antes} → {despues}  ({reduccion:.1f}% menos)"))
+        subtitulo("Grafo de flujo de control (bloques básicos del TAC optimizado)")
+        print(grafo_como_texto(tac_optimizado, construir_grafo(tac_optimizado)))
 
     # ------------------------------------------------------------ FASE 6
     base_codigo = tac if args.sin_optimizar else tac_optimizado
@@ -219,6 +237,7 @@ def compilar(ruta: Path, carpeta_salida: str, args: argparse.Namespace) -> int:
     ejec_tac = EmuladorTAC(tac).ejecutar()
     ejec_opt = EmuladorTAC(tac_optimizado).ejecutar()
     ejec_asm = EmuladorASM(codigo).ejecutar()
+    ejec_ast = interpretar(ast, semantico.tabla.todos, semantico.funciones)
     if ver(7):
         titulo(7, "VERIFICACIÓN: EJECUCIÓN Y PRESERVACIÓN DE LA SEMÁNTICA")
         subtitulo("Salida del programa (ejecutando el ensamblador)")
@@ -236,14 +255,16 @@ def compilar(ruta: Path, carpeta_salida: str, args: argparse.Namespace) -> int:
             print(f"  {ejec_asm.heap.resumen()}")
             for direccion, contenido, tam in ejec_asm.heap.fugas():
                 print(Color.aviso(f"  fuga: bloque 0x{direccion:04X} ({tam} bytes) con \"{contenido}\" nunca se liberó"))
-        subtitulo("Comparación de las tres ejecuciones")
-        for nombre, r in (("TAC original", ejec_tac), ("TAC optimizado", ejec_opt), ("Ensamblador", ejec_asm)):
+        subtitulo("Comparación de las cuatro ejecuciones")
+        ejecuciones = (("Intérprete AST", ejec_ast), ("TAC original", ejec_tac),
+                       ("TAC optimizado", ejec_opt), ("Ensamblador", ejec_asm))
+        for nombre, r in ejecuciones:
             print(f"  {nombre:<16}{len(r.salida):>3} líneas impresas · {r.pasos:>6} pasos"
                   + (f" · error: {r.error}" if r.error else ""))
-        iguales = ejec_tac.salida == ejec_opt.salida == ejec_asm.salida and \
-            bool(ejec_tac.error) == bool(ejec_opt.error) == bool(ejec_asm.error)
+        iguales = all(r.salida == ejec_asm.salida and bool(r.error) == bool(ejec_asm.error)
+                      for _, r in ejecuciones)
         if iguales:
-            print(Color.ok("\n  ✓ Las tres ejecuciones producen la misma salida: la semántica se preservó."))
+            print(Color.ok("\n  ✓ Las cuatro ejecuciones producen la misma salida: la semántica se preservó."))
         else:
             print(Color.error("\n  ✗ Las salidas difieren: revisar optimizador o generador de código."))
 
@@ -252,11 +273,13 @@ def compilar(ruta: Path, carpeta_salida: str, args: argparse.Namespace) -> int:
     escribir_salida(carpeta_salida, f"{ruta.stem}.tac", tac.como_texto() + "\n")
     escribir_salida(carpeta_salida, f"{ruta.stem}.opt.tac", tac_optimizado.como_texto() + "\n")
     escribir_salida(carpeta_salida, f"{ruta.stem}.asm", codigo.como_texto() + "\n")
+    escribir_salida(carpeta_salida, f"{ruta.stem}.cfg.dot",
+                    grafo_dot(tac_optimizado, construir_grafo(tac_optimizado), ruta.stem) + "\n")
     if args.automatas:
         escribir_salida(carpeta_salida, "automata_lexer.dot", construir_automatas().minimo.dot("DFA mínimo") + "\n")
     carpeta = os.path.relpath(carpeta_salida)
     print(Color.ok(f"\n  Compilación exitosa. Archivos generados en {carpeta}/: "
-                   f"{ruta.stem}.tac, {ruta.stem}.opt.tac, {ruta.stem}.asm"))
+                   f"{ruta.stem}.tac, {ruta.stem}.opt.tac, {ruta.stem}.asm, {ruta.stem}.cfg.dot"))
     return 0 if ejec_asm.ok else 2
 
 
@@ -267,6 +290,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("archivo", help="programa fuente .drg")
     parser.add_argument("--registros", type=int, default=3, help="registros físicos disponibles (mínimo 2)")
     parser.add_argument("--sin-optimizar", action="store_true", help="no optimizar antes de generar ensamblador")
+    parser.add_argument("--interpretar", action="store_true", help="ejecutar con el intérprete del AST, sin compilar")
     parser.add_argument("--automatas", action="store_true", help="mostrar los autómatas del lexer (NFA, DFA, DFA mínimo)")
     parser.add_argument("--fases", help="fases a mostrar, separadas por comas (1-7)")
     parser.add_argument("--sin-color", action="store_true", help="desactiva colores ANSI")
