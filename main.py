@@ -20,6 +20,7 @@ Ejemplos:
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 import traceback
 from pathlib import Path
@@ -59,7 +60,26 @@ def mostrar_error_con_contexto(error, lineas_fuente: list[str]) -> None:
         print(Color.tenue("         | ") + " " * max(0, error.columna - 1) + color("^"))
 
 
-def compilar(ruta: Path, args: argparse.Namespace) -> int:
+def ruta_segura(relativa: str, base: str) -> str | None:
+    """Resuelve una ruta recibida por línea de comandos y garantiza que quede
+    DENTRO de la carpeta base. Evita ataques de Path Traversal (por ejemplo
+    `../../etc/passwd`): si la ruta real sale de la base, se rechaza."""
+    base_real = os.path.realpath(base)
+    ruta_real = os.path.realpath(os.path.join(base_real, relativa))
+    if ruta_real == base_real or ruta_real.startswith(base_real + os.sep):
+        return ruta_real
+    return None
+
+
+def escribir_salida(carpeta: str, nombre: str, contenido: str) -> None:
+    destino = ruta_segura(nombre, carpeta)
+    if destino is None:
+        raise ValueError(f"Nombre de archivo de salida no permitido: {nombre}")
+    with open(destino, "w", encoding="utf-8") as archivo:
+        archivo.write(contenido)
+
+
+def compilar(ruta: Path, carpeta_salida: str, args: argparse.Namespace) -> int:
     fases = set(range(1, 8)) if not args.fases else {int(f) for f in args.fases.split(",")}
     ver = lambda n: n in fases
 
@@ -181,11 +201,11 @@ def compilar(ruta: Path, args: argparse.Namespace) -> int:
             print(Color.error("\n  ✗ Las salidas difieren: revisar optimizador o generador de código."))
 
     # ------------------------------------------------------ archivos de salida
-    carpeta = Path(args.salida)
-    carpeta.mkdir(parents=True, exist_ok=True)
-    (carpeta / f"{ruta.stem}.tac").write_text(tac.como_texto() + "\n", encoding="utf-8")
-    (carpeta / f"{ruta.stem}.opt.tac").write_text(tac_optimizado.como_texto() + "\n", encoding="utf-8")
-    (carpeta / f"{ruta.stem}.asm").write_text(codigo.como_texto() + "\n", encoding="utf-8")
+    os.makedirs(carpeta_salida, exist_ok=True)
+    escribir_salida(carpeta_salida, f"{ruta.stem}.tac", tac.como_texto() + "\n")
+    escribir_salida(carpeta_salida, f"{ruta.stem}.opt.tac", tac_optimizado.como_texto() + "\n")
+    escribir_salida(carpeta_salida, f"{ruta.stem}.asm", codigo.como_texto() + "\n")
+    carpeta = os.path.relpath(carpeta_salida)
     print(Color.ok(f"\n  Compilación exitosa. Archivos generados en {carpeta}/: "
                    f"{ruta.stem}.tac, {ruta.stem}.opt.tac, {ruta.stem}.asm"))
     return 0 if ejec_asm.ok else 2
@@ -213,13 +233,24 @@ def main(argv: list[str] | None = None) -> int:
         print(Color.error("Se necesitan al menos 2 registros (--registros 2 o más)."))
         return 1
 
-    ruta = Path(args.archivo)
-    if not ruta.is_file():
-        print(Color.error(f"No se encontró el archivo '{ruta}'."))
+    # Seguridad: las rutas recibidas por consola deben quedar dentro de la
+    # carpeta de trabajo actual (protección contra Path Traversal).
+    base = os.getcwd()
+    archivo_validado = ruta_segura(args.archivo, base)
+    carpeta_salida = ruta_segura(args.salida, base)
+    if archivo_validado is None or carpeta_salida is None:
+        print(Color.error("Por seguridad, el archivo fuente y la carpeta de salida deben estar "
+                          "dentro de la carpeta actual del proyecto."))
+        return 1
+    if not archivo_validado.endswith(".drg"):
+        print(Color.error(f"El archivo '{args.archivo}' no tiene la extensión .drg de un programa Dragon."))
+        return 1
+    if not os.path.isfile(archivo_validado):
+        print(Color.error(f"No se encontró el archivo '{args.archivo}'."))
         return 1
 
     try:
-        return compilar(ruta, args)
+        return compilar(Path(archivo_validado), carpeta_salida, args)
     except Exception as e:  # Nunca se muestra un traceback crudo al usuario
         print(Color.error(f"\n[ERROR INTERNO DEL COMPILADOR] {type(e).__name__}: {e}"))
         if args.depurar:

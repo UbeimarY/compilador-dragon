@@ -5,11 +5,12 @@ import unittest
 
 import main
 from dragon.errores import LEXICO, SEMANTICO, SINTACTICO
-from tests.ayudas import EJEMPLOS, ejecutar, frente
+from tests.ayudas import EJEMPLOS, RAIZ, ejecutar, frente
 
 
 def ejecutar_main(*argumentos):
-    with tempfile.TemporaryDirectory() as carpeta, contextlib.redirect_stdout(io.StringIO()) as salida:
+    # La carpeta de salida debe estar dentro del proyecto (protección contra Path Traversal)
+    with tempfile.TemporaryDirectory(dir=RAIZ) as carpeta, contextlib.redirect_stdout(io.StringIO()) as salida:
         codigo = main.main([*argumentos, "--sin-color", "--salida", carpeta])
     return codigo, salida.getvalue()
 
@@ -53,6 +54,22 @@ class PruebasIntegracion(unittest.TestCase):
             codigo, salida = ejecutar_main(str(EJEMPLOS / "programa_registros.drg"), "--registros", n)
             self.assertEqual(codigo, 0)
             self.assertIn("la semántica se preservó", salida)
+
+    def test_rechaza_path_traversal_en_archivo(self):
+        codigo, salida = ejecutar_main("../../etc/passwd.drg")
+        self.assertEqual(codigo, 1)
+        self.assertIn("Por seguridad", salida)
+
+    def test_rechaza_path_traversal_en_carpeta_de_salida(self):
+        with contextlib.redirect_stdout(io.StringIO()) as salida:
+            codigo = main.main([str(EJEMPLOS / "programa_correcto.drg"), "--sin-color", "--salida", "../../tmp/ataque"])
+        self.assertEqual(codigo, 1)
+        self.assertIn("Por seguridad", salida.getvalue())
+
+    def test_rechaza_extension_distinta_de_drg(self):
+        codigo, salida = ejecutar_main("README.md")
+        self.assertEqual(codigo, 1)
+        self.assertIn(".drg", salida)
 
     def test_archivo_inexistente(self):
         codigo, salida = ejecutar_main("no_existe.drg")

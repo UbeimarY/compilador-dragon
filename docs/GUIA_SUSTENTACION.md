@@ -11,7 +11,7 @@
 | 7–9 | Fase 6 con spill | `python main.py ejemplos/programa_registros.drg --registros 2 --fases 6` | "Con 2 registros no alcanzan: el generador desaloja a la pila el temporal cuyo próximo uso está más lejos (Belady) y luego lo recarga." |
 | 9–10 | Fase 7 | `python main.py ejemplos/programa_correcto.drg --fases 7` | "Ejecutamos TAC, TAC optimizado y ensamblador en máquinas virtuales: las tres salidas coinciden, así que la semántica se preservó." |
 | 10–12 | Estrés | `python main.py ejemplos/programa_estres.drg` | "16 errores de los tres tipos, cada uno con su línea, su columna y una marca `^`, sin detener el programa ni mostrar tracebacks." |
-| Cierre | Pruebas | `python -m unittest -v` | "52 pruebas automáticas cubren todas las fases." |
+| Cierre | Pruebas | `python -m unittest -v` | "55 pruebas automáticas cubren todas las fases." |
 
 ---
 

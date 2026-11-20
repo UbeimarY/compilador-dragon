@@ -12,7 +12,7 @@ Código fuente → Tokens → AST → Análisis semántico → TAC → TAC optim
 ```
 
 * Escrito en **Python 3.10+**, **sin ninguna librería externa**: no hay que instalar nada con `pip`.
-* **52 pruebas automáticas** (`unittest`).
+* **55 pruebas automáticas** (`unittest`).
 * Detecta y reporta errores **léxicos, sintácticos y semánticos con línea y columna exactas**, todos en una sola compilación y sin detener el programa abruptamente.
 * Genera ensamblador con **asignación de registros y desbordamiento (spill) a la pila**.
 * **Verifica la preservación de la semántica**: ejecuta el TAC original, el TAC optimizado y el ensamblador en máquinas virtuales y comprueba que los tres producen la misma salida.
@@ -67,6 +67,8 @@ python -m unittest -v
 | `--fases 1,4,6` | Muestra solo las fases indicadas (1 a 7) |
 | `--sin-color` | Desactiva los colores de la consola |
 | `--salida DIR` | Carpeta de los archivos generados (por defecto `salida/`) |
+
+> **Seguridad:** el archivo fuente debe tener extensión `.drg`, y tanto el archivo como la carpeta de salida deben estar **dentro de la carpeta actual**. Las rutas se resuelven con `os.path.realpath` y se rechaza cualquiera que intente salir de ella (protección contra *Path Traversal*, por ejemplo `../../`). Por eso los comandos se ejecutan desde la raíz del repositorio.
 
 Cada compilación exitosa genera tres archivos en `salida/`: `programa.tac`, `programa.opt.tac` y `programa.asm`.
 
@@ -355,7 +357,7 @@ Para no generar **errores en cascada**, un error sintáctico no se reporta si en
 python -m unittest -v
 ```
 
-Son 52 pruebas en `tests/`: lexer (7), parser (8), semántico (15), optimizador (9), código objetivo (6) e integración (7). Entre otras cosas verifican que nunca se emiten dos operandos de memoria en una instrucción, que solo se usan los registros disponibles y que la salida es correcta con 2, 3, 4 y 6 registros.
+Son 55 pruebas en `tests/`: lexer (7), parser (8), semántico (15), optimizador (9), código objetivo (6) e integración (10). Entre otras cosas verifican que nunca se emiten dos operandos de memoria en una instrucción, que solo se usan los registros disponibles y que la salida es correcta con 2, 3, 4 y 6 registros.
 
 ---
 
@@ -366,7 +368,7 @@ Son 52 pruebas en `tests/`: lexer (7), parser (8), semántico (15), optimizador 
 | **1. Demostración de pipeline continuo** | `python main.py archivo.drg` muestra en consola Tokens → AST → Tabla de símbolos → TAC → TAC optimizado → Ensamblador → Ejecución, y guarda los `.tac` y `.asm` |
 | **2. Manejo riguroso de errores** | Errores léxicos, sintácticos y de tipos con **línea y columna exactas**, marca `^` en el código, todos en una sola pasada y sin tracebacks: el programa nunca se detiene abruptamente |
 | **3. Gestión de recursos de hardware** | Tabla de símbolos con ámbitos, nombres únicos y **direcciones de memoria**; asignación de **registros** con análisis de vida; **spill** a la pila con criterio de Belady; prólogo y epílogo del marco de pila |
-| **4. Defensa de los casos de prueba** | `programa_correcto.drg` (flujo completo) y `programa_estres.drg` (estrés del analizador semántico), más casos adicionales y 52 pruebas automáticas |
+| **4. Defensa de los casos de prueba** | `programa_correcto.drg` (flujo completo) y `programa_estres.drg` (estrés del analizador semántico), más casos adicionales y 55 pruebas automáticas |
 
 ---
 
@@ -388,7 +390,7 @@ compilador-dragon/
 │   └── utilidades.py          # Semántica de operadores, formato y colores
 ├── ejemplos/                  # Programas .drg de prueba
 │   └── errores/               # Un ejemplo por cada tipo de error
-├── tests/                     # 52 pruebas automáticas (unittest)
+├── tests/                     # 55 pruebas automáticas (unittest)
 └── docs/
     └── GUIA_SUSTENTACION.md   # Guion de la sustentación y preguntas frecuentes
 ```
