@@ -69,6 +69,7 @@ class InstruccionASM:
     opcode: str
     operandos: list[str] = field(default_factory=list)
     comentario: str = ""
+    linea: Optional[int] = field(default=None, compare=False, repr=False)  # línea del código fuente
 
     def __str__(self) -> str:
         if self.opcode == "LABEL":
@@ -114,13 +115,14 @@ class GeneradorCodigo:
         self.spills = 0
         self._usos: dict[str, list[int]] = {}
         self._i = 0
+        self._linea: Optional[int] = None   # línea fuente de la cuádrupla que se está traduciendo
         self._nlocales = 0
         self._funcion_actual: Optional[str] = None
         self.marcos: list[tuple[str, int, int, int]] = []   # (función, locales, ranuras, bytes)
 
     # ------------------------------------------------------------ utilidades
     def _emitir(self, opcode: str, *operandos: str, comentario: str = "") -> None:
-        self.salida.append(InstruccionASM(opcode, list(operandos), comentario))
+        self.salida.append(InstruccionASM(opcode, list(operandos), comentario, self._linea))
 
     def _es_temporal(self, x: Operando) -> bool:
         return isinstance(x, str) and bool(ES_TEMPORAL.match(x))
@@ -280,8 +282,11 @@ class GeneradorCodigo:
         self._preparar_segmento(indices)
         for i in indices:
             self._i = i
+            self._linea = self.p.instrucciones[i].linea
             self._traducir(self.p.instrucciones[i])
         cuerpo = self.salida
+        # El prólogo y el epílogo pertenecen a la línea donde se declara la función
+        self._linea = self.p.instrucciones[indices.start - 1].linea if funcion else None
 
         bytes_marco = 8 * (self._nlocales + self._ranuras)
         self.marcos.append((funcion or "main", self._nlocales, self._ranuras, bytes_marco))

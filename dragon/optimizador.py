@@ -143,7 +143,7 @@ class Optimizador:
                 return None
         except ErrorEjecucion:
             return None  # p. ej. división por cero: se deja para tiempo de ejecución
-        nueva = Cuadrupla("=", self._const_de_tipo(valor, tipo), None, q.res)
+        nueva = Cuadrupla("=", self._const_de_tipo(valor, tipo), None, q.res, q.linea)
         self._anotar("Plegado de constantes", f"{str(q).strip()}  →  {str(nueva).strip()}")
         return nueva
 
@@ -172,7 +172,7 @@ class Optimizador:
             resultado = a
         if resultado is None:
             return None
-        nueva = Cuadrupla("=", resultado, None, q.res)
+        nueva = Cuadrupla("=", resultado, None, q.res, q.linea)
         self._anotar("Simplificación algebraica", f"{str(q).strip()}  →  {str(nueva).strip()}")
         return nueva
 
@@ -185,7 +185,7 @@ class Optimizador:
                 if q.arg1.valor:
                     self._anotar("Saltos constantes", f"{str(q).strip()}  →  (eliminado: nunca salta)")
                     continue
-                nueva = Cuadrupla("goto", res=q.res)
+                nueva = Cuadrupla("goto", res=q.res, linea=q.linea)
                 self._anotar("Saltos constantes", f"{str(q).strip()}  →  {str(nueva).strip()}")
                 q = nueva
             resultado.append(q)
@@ -249,7 +249,7 @@ class Optimizador:
             t = q.define()
             if (t and _es_temporal(t) and siguiente is not None and siguiente.op == "="
                     and siguiente.arg1 == t and usos[t] == 1):
-                fusionada = Cuadrupla(q.op, q.arg1, q.arg2, siguiente.res)
+                fusionada = Cuadrupla(q.op, q.arg1, q.arg2, siguiente.res, siguiente.linea)
                 self._anotar("Fusión de temporales", f"{str(q).strip()}; {str(siguiente).strip()}  →  {str(fusionada).strip()}")
                 resultado.append(fusionada)
                 cambio = True

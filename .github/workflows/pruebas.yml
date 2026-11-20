@@ -58,6 +58,9 @@ jobs:
           esperar 1 ejemplos/errores/error_funciones.drg
           esperar 2 ejemplos/errores/error_memoria.drg
           esperar 2 ejemplos/errores/error_recursion.drg
+          esperar 0 ejemplos/programa_correcto.drg --linea 9
+          esperar 1 ejemplos/errores/error_lexico.drg --linea 4
+          esperar 2 ejemplos/errores/error_recursion.drg --linea 4
           grep -q "la semántica se preservó" <(python main.py ejemplos/programa_correcto.drg --sin-color)
 
       - name: Ejecutar como módulo (python -m dragon)

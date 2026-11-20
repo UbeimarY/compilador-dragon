@@ -18,6 +18,7 @@ de código conservaron el significado del programa.
 
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass, field
 
 from .codegen import CodigoObjetivo
@@ -36,6 +37,8 @@ class ResultadoEjecucion:
     pasos: int = 0
     error: str | None = None
     heap: Heap | None = None
+    conteo: Counter = field(default_factory=Counter)       # veces que se ejecutó cada instrucción TAC
+    origen_salida: list[int] = field(default_factory=list)  # instrucción TAC que produjo cada línea impresa
 
     @property
     def ok(self) -> bool:
@@ -89,6 +92,7 @@ class EmuladorTAC:
                 if r.pasos > LIMITE_PASOS:
                     raise ErrorEjecucion(f"Se superaron {LIMITE_PASOS} pasos: posible ciclo infinito")
                 q = instr[pc]
+                r.conteo[pc] += 1
                 pc += 1
                 if q.op in ("label", "func", "fin_func"):
                     continue
@@ -102,6 +106,7 @@ class EmuladorTAC:
                 elif q.op == "print":
                     r.salida.append(formatear_valor(self.heap.leer(self._valor(q.arg1))
                                                     if self.p.tipo_de(q.arg1) == "texto" else self._valor(q.arg1)))
+                    r.origen_salida.append(pc - 1)
                 elif q.op == "param":
                     self.argumentos.append(self._valor(q.arg1))
                 elif q.op == "call":

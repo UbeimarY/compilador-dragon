@@ -42,6 +42,7 @@ from .optimizador import optimizar
 from .parser import Parser
 from .semantico import AnalizadorSemantico
 from .tac import generar_tac
+from .traza import analizar, recorrido_como_texto
 from .utilidades import Color, formatear_valor
 
 ANCHO = 78
@@ -125,6 +126,14 @@ def compilar(ruta: Path, carpeta_salida: str, args: argparse.Namespace) -> int:
     reporte = ReporteErrores()
 
     print(Color.titulo(f"\n  COMPILADOR DRAGON — {ruta.name}  ({len(lineas_fuente)} líneas)"))
+
+    if args.linea is not None:
+        titulo(None, f"RECORRIDO DE LA LÍNEA {args.linea} POR LAS 7 FASES")
+        analisis = analizar(fuente, args.registros, not args.sin_optimizar, args.asignador)
+        print(recorrido_como_texto(analisis, args.linea))
+        if not 1 <= args.linea <= len(lineas_fuente):
+            return 1
+        return analisis.codigo_salida
 
     # ------------------------------------------------------------ FASE 1
     tokens = Lexer(fuente, reporte).tokenizar()
@@ -297,6 +306,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--interpretar", action="store_true", help="ejecutar con el intérprete del AST, sin compilar")
     parser.add_argument("--automatas", action="store_true", help="mostrar los autómatas del lexer (NFA, DFA, DFA mínimo)")
     parser.add_argument("--fases", help="fases a mostrar, separadas por comas (1-7)")
+    parser.add_argument("--linea", type=int, metavar="N",
+                        help="seguir la línea N del programa por las 7 fases")
     parser.add_argument("--sin-color", action="store_true", help="desactiva colores ANSI")
     parser.add_argument("--salida", default="salida", help="carpeta para los archivos generados")
     parser.add_argument("--depurar", action="store_true", help=argparse.SUPPRESS)

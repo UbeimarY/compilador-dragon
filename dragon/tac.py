@@ -80,6 +80,7 @@ class Cuadrupla:
     arg1: Operando = None
     arg2: Operando = None
     res: Optional[str] = None
+    linea: Optional[int] = field(default=None, compare=False, repr=False)  # línea del código fuente
 
     def usos(self) -> list[str]:
         """Nombres (variables o temporales) que esta instrucción LEE."""
@@ -160,7 +161,7 @@ class ProgramaTAC:
         return "\n".join(filas)
 
     def copia(self) -> "ProgramaTAC":
-        return ProgramaTAC([Cuadrupla(q.op, q.arg1, q.arg2, q.res) for q in self.instrucciones],
+        return ProgramaTAC([Cuadrupla(q.op, q.arg1, q.arg2, q.res, q.linea) for q in self.instrucciones],
                            dict(self.tipos), list(self.variables), dict(self.funciones), dict(self.marco))
 
 
@@ -170,6 +171,7 @@ class GeneradorTAC:
         self.tipos: dict[str, str] = {}
         self._temporales = 0
         self._etiquetas = 0
+        self._linea: Optional[int] = None   # línea fuente de la instrucción que se está traduciendo
 
     def nuevo_temporal(self, tipo: str) -> str:
         self._temporales += 1
@@ -182,7 +184,7 @@ class GeneradorTAC:
         return f"L{self._etiquetas}"
 
     def emitir(self, op: str, arg1: Operando = None, arg2: Operando = None, res: Optional[str] = None) -> None:
-        self.instrucciones.append(Cuadrupla(op, arg1, arg2, res))
+        self.instrucciones.append(Cuadrupla(op, arg1, arg2, res, self._linea))
 
     # ------------------------------------------------------------------ API
     def generar(self, programa: Programa, simbolos: list[Simbolo],
@@ -198,6 +200,7 @@ class GeneradorTAC:
             if not isinstance(instr, Funcion):
                 self._instruccion(instr)
         if cuerpos:
+            self._linea = None
             self.emitir("fin")  # el programa principal termina aquí; después van las funciones
             for f in cuerpos:
                 self._funcion(f, funciones[f.nombre])
@@ -205,15 +208,27 @@ class GeneradorTAC:
         return ProgramaTAC(self.instrucciones, self.tipos, globales, dict(funciones), marco)
 
     def _funcion(self, n: Funcion, info: InfoFuncion) -> None:
+        self._linea = n.linea
         self.emitir("func", list(info.parametros), None, n.nombre)
         for instr in n.cuerpo.instrucciones:
             self._instruccion(instr)
         if not self.instrucciones or self.instrucciones[-1].op != "return":
+            self._linea = n.linea
             self.emitir("return")  # retorno implícito al final de la función
+        self._linea = n.linea
         self.emitir("fin_func", res=n.nombre)
 
     # -------------------------------------------------------- instrucciones
     def _instruccion(self, n: Nodo) -> None:
+        anterior = self._linea
+        if not isinstance(n, Bloque):
+            self._linea = n.linea
+        try:
+            self._traducir_instruccion(n)
+        finally:
+            self._linea = anterior
+
+    def _traducir_instruccion(self, n: Nodo) -> None:
         if isinstance(n, Retornar):
             self.emitir("return", self._expresion(n.valor) if n.valor is not None else None)
         elif isinstance(n, InstruccionExpresion):
