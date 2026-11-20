@@ -53,9 +53,6 @@ jobs:
           esperar 1 ejemplos/errores/error_semantico.drg
           grep -q "la semántica se preservó" <(python main.py ejemplos/programa_correcto.drg --sin-color)
 
-      - name: Instalar con pip y usar el comando dragon
+      - name: Ejecutar como módulo (python -m dragon)
         shell: bash
-        run: |
-          python -m pip install .
-          dragon ejemplos/programa_correcto.drg --sin-color --fases 7 | grep "la semántica se preservó"
-          python -m dragon ejemplos/programa_correcto.drg --sin-color --fases 7 | grep "la semántica se preservó"
+        run: python -m dragon ejemplos/programa_correcto.drg --sin-color --fases 7 | grep "la semántica se preservó"

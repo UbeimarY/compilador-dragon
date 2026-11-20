@@ -79,7 +79,7 @@ dragon mi_programa.drg
 
 ### Integración continua
 
-Con cada commit, **GitHub Actions** ejecuta las 55 pruebas, compila todos los ejemplos e instala el paquete con `pip` en **Windows, Linux y macOS con Python 3.10, 3.11, 3.12 y 3.13**: 12 combinaciones. Otro flujo publica el playground en GitHub Pages. Además, **SonarCloud** analiza la calidad y la seguridad del código en cada commit.
+Con cada commit, **GitHub Actions** ejecuta las 55 pruebas y compila todos los ejemplos (como script y como módulo `python -m dragon`) en **Windows, Linux y macOS con Python 3.10, 3.11, 3.12 y 3.13**: 12 combinaciones. Otro flujo publica el playground en GitHub Pages. Además, **SonarCloud** analiza la calidad y la seguridad del código en cada commit.
 
 ### Opciones de la línea de comandos
 

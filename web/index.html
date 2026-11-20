@@ -170,7 +170,9 @@
   <span>Proyecto final · Compiladores · Universidad Cooperativa de Colombia</span>
 </footer>
 
-<script src="https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js"></script>
+<script src="https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js"
+        integrity="sha384-i3R37b3tF+HWudsUf1VSEOY2YxwSNMqY8DQa9Z0O3xh+NkJ9o+yjcGyIi5huj+nB"
+        crossorigin="anonymous"></script>
 <script>
 const MODULOS = ["__init__", "ast_nodos", "cli", "codegen", "emulador", "errores", "lexer",
                  "optimizador", "parser", "semantico", "tac", "utilidades"];
@@ -289,8 +291,20 @@ def _compilar(codigo, registros, optimizar):
     if clave is not None:
         secciones[clave] = "\\n".join(actual).strip("\\n")
 
+    metricas = {}
+    for linea in lineas:
+        limpia = linea.strip()
+        if limpia.startswith("Instrucciones TAC:"):
+            partes = limpia.split()
+            metricas["tac_antes"], metricas["tac_despues"] = partes[2], partes[4]
+        elif "spill(s)" in limpia:
+            metricas["spills"] = limpia.split()[0]
+        elif limpia.startswith("Compilación detenida:"):
+            metricas["errores"] = limpia.split()[2]
+
     errores = re.findall(r"^\\[(LÉXICO|SINTÁCTICO|SEMÁNTICO|ADVERTENCIA)\\] L:(\\d+) C:(\\d+) — (.*)$", texto, re.M)
-    return json.dumps({"codigo": codigo_salida, "secciones": secciones, "errores": errores, "texto": texto})
+    return json.dumps({"codigo": codigo_salida, "secciones": secciones, "errores": errores,
+                       "metricas": metricas, "preservada": "la semántica se preservó" in texto})
 `;
 
 async function iniciar() {
@@ -350,16 +364,13 @@ function compilar() {
   const hayErrores = "errores" in secciones;
   if (hayErrores) {
     activa = "errores";
-    const m = r.texto.match(/Compilación detenida: (\d+) error/);
-    estado("mal", `${m ? m[1] : "Hay"} error(es): no se genera código`, `${ms} ms`);
+    estado("mal", `${r.metricas.errores ?? "Hay"} error(es): no se genera código`, `${ms} ms`);
   } else {
     if (!(activa in secciones) || activa === "errores") activa = "7";
-    const reduccion = r.texto.match(/Instrucciones TAC: (\d+) → (\d+)/);
-    const spills = r.texto.match(/(\d+) spill\(s\)/);
-    const preservada = r.texto.includes("la semántica se preservó");
+    const m = r.metricas, preservada = r.preservada;
     const partes = [];
-    if (reduccion) partes.push(`TAC ${reduccion[1]}→${reduccion[2]}`);
-    partes.push(`${spills ? spills[1] : 0} spills`);
+    if (m.tac_antes) partes.push(`TAC ${m.tac_antes}→${m.tac_despues}`);
+    partes.push(`${m.spills ?? 0} spills`);
     partes.push(`${ms} ms`);
     estado(preservada ? "ok" : "mal",
            preservada ? "Compilación exitosa · semántica preservada" : "Compilado, pero las ejecuciones difieren",
