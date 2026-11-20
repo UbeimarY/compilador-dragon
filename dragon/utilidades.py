@@ -28,6 +28,62 @@ def modulo_entero(a: int, b: int) -> int:
     return a - b * division_entera(a, b)
 
 
+class ErrorEjecucion(Exception):
+    """Error en tiempo de ejecución detectado por los emuladores."""
+
+
+def operar(op: str, a, b):
+    """Semántica única de los operadores binarios del lenguaje Dragon.
+
+    La usan el optimizador (plegado de constantes) y los dos emuladores, lo
+    que garantiza que todos calculen exactamente lo mismo.
+    """
+    if op in ("/", "%") and b == 0:
+        raise ErrorEjecucion("División por cero")
+    enteros = isinstance(a, int) and isinstance(b, int) and not isinstance(a, bool) and not isinstance(b, bool)
+    if op == "+":
+        return a + b
+    if op == "-":
+        return a - b
+    if op == "*":
+        return a * b
+    if op == "/":
+        return division_entera(a, b) if enteros else a / b
+    if op == "%":
+        return modulo_entero(a, b)
+    if op == "<":
+        return a < b
+    if op == ">":
+        return a > b
+    if op == "<=":
+        return a <= b
+    if op == ">=":
+        return a >= b
+    if op == "==":
+        return a == b
+    if op == "!=":
+        return a != b
+    if op == "&&":
+        return bool(a) and bool(b)
+    if op == "||":
+        return bool(a) or bool(b)
+    raise ErrorEjecucion(f"Operador desconocido '{op}'")
+
+
+def operar_unaria(op: str, a):
+    if op == "neg":
+        return -a
+    if op == "not":
+        return not a
+    if op == "itof":
+        return float(a)
+    raise ErrorEjecucion(f"Operador unario desconocido '{op}'")
+
+
+def valor_por_defecto(tipo: str):
+    return {"entero": 0, "real": 0.0, "texto": "", "booleano": False}.get(tipo, 0)
+
+
 # ----------------------------------------------------------------------
 # Colores ANSI para la consola (se desactivan si la salida no es terminal)
 # ----------------------------------------------------------------------
