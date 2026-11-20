@@ -63,6 +63,9 @@ jobs:
           esperar 2 ejemplos/errores/error_recursion.drg --linea 4
           grep -q "la semántica se preservó" <(python main.py ejemplos/programa_correcto.drg --sin-color)
 
+      - name: Ejecutar todos los pasos de la guía de estudio
+        run: python docs/verificar_guia.py
+
       - name: Ejecutar como módulo (python -m dragon)
         shell: bash
         run: python -m dragon ejemplos/programa_correcto.drg --sin-color --fases 7 | grep "la semántica se preservó"

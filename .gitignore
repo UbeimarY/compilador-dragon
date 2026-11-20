@@ -9,3 +9,8 @@ salida/
 build/
 dist/
 *.egg-info/
+resultado.txt
+registro_guia.txt
+suma.drg
+ejemplos/mio.drg
+compilador-dragon.zip

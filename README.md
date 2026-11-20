@@ -88,6 +88,8 @@ python -m unittest -v
 
 > En macOS/Linux puede ser necesario usar `python3` en lugar de `python`.
 
+**Todos los pasos de la guía de estudio de una vez:** en Windows, doble clic en `ejecutar_guia.bat` (si el proyecto no está descargado, lo descarga); en cualquier sistema, `python docs/verificar_guia.py`. Ejecuta cada paso, compara el resultado con lo esperado, muestra un resumen con ✓ y ✗ y guarda la salida completa en `registro_guia.txt`. GitHub Actions lo corre en cada commit en Windows, Linux y macOS.
+
 ### Otras formas de ejecutarlo
 
 ```bash
