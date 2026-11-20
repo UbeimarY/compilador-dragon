@@ -1,0 +1,54 @@
+// ================================================================
+//  programa_correcto.drg — Simulador de combate contra un dragón
+//  Caso de prueba 1: flujo correcto completo
+//  Tokens → AST → Semántico → TAC → Optimización → Ensamblador
+// ================================================================
+
+texto heroe = "Aria";
+entero vida_dragon = 120;
+entero ataque_base = 10 * 2 + 5;       // plegado de constantes → 25
+real multiplicador = 1.5;
+entero turno = 1;
+booleano dragon_vivo = verdadero;
+booleano modo_depuracion = falso;
+
+/* Este bloque nunca se ejecuta: el optimizador lo
+   detecta y lo elimina como código inalcanzable. */
+si (modo_depuracion) {
+    imprimir("[debug] iniciando simulación");
+}
+
+imprimir("Comienza la batalla de " + heroe);
+
+mientras (dragon_vivo && turno <= 6) {
+    entero dano = ataque_base;          // variable local del ciclo
+
+    si (turno % 3 == 0) {
+        real critico = dano * multiplicador;   // coerción implícita entero → real
+        imprimir("¡Golpe crítico!");
+        imprimir(critico);
+        dano = dano * 2;
+    } sino si (turno % 2 == 0) {
+        dano = dano - 5;                // el dragón se defiende
+    } sino {
+        dano = dano + turno;            // ataque normal con bonificación
+    }
+
+    vida_dragon = vida_dragon - dano;
+    si (vida_dragon <= 0) {
+        vida_dragon = 0;
+        dragon_vivo = falso;
+    }
+    imprimir(turno);
+    imprimir(vida_dragon);
+    turno = turno + 1;
+}
+
+si (!dragon_vivo) {
+    imprimir(heroe + " derrotó al dragón");
+} sino {
+    imprimir("El dragón escapó");
+}
+
+real promedio = (120 - vida_dragon) / (turno - 1.0);   // daño promedio por turno
+imprimir(promedio);

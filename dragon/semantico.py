@@ -123,12 +123,13 @@ class TablaSimbolos:
         return alineada
 
     def como_texto(self) -> str:
-        encabezado = f"{'Nombre':<12}{'Interno':<12}{'Tipo':<10}{'Ámbito':<26}{'Nivel':<7}{'Línea':<7}{'Dirección':<11}{'Bytes':<6}"
-        filas = [encabezado, "-" * len(encabezado)]
-        for s in self.todos:
-            filas.append(f"{s.nombre:<12}{s.nombre_unico:<12}{s.tipo:<10}{s.ambito:<26}{s.nivel:<7}"
-                         f"{s.linea:<7}{'0x%04X' % s.direccion:<11}{s.tamanio:<6}")
-        return "\n".join(filas)
+        columnas = ["Nombre", "Interno", "Tipo", "Ámbito", "Nivel", "Línea", "Dirección", "Bytes"]
+        datos = [[s.nombre, s.nombre_unico, s.tipo, s.ambito, str(s.nivel), str(s.linea),
+                  "0x%04X" % s.direccion, str(s.tamanio)] for s in self.todos]
+        anchos = [max([len(c)] + [len(f[i]) for f in datos]) + 2 for i, c in enumerate(columnas)]
+        fila = lambda valores: "".join(v.ljust(a) for v, a in zip(valores, anchos)).rstrip()
+        encabezado = fila(columnas)
+        return "\n".join([encabezado, "-" * len(encabezado)] + [fila(f) for f in datos])
 
 
 # =============================================================== Analizador
