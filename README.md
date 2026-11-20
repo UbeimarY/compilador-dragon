@@ -11,7 +11,12 @@ Docente: Mg. Gabriel Guerrero Arellano.
 
 ### 🌐 [Pruébelo en el navegador → ubeimary.github.io/compilador-dragon](https://ubeimary.github.io/compilador-dragon/)
 
-El **Dragon Playground** ejecuta el compilador completo dentro del navegador (con [Pyodide](https://pyodide.org)), sin instalar nada: se escribe código Dragon, se compila con `Ctrl + Enter` y cada fase aparece en su propia pestaña. Las líneas con errores se marcan en el editor.
+El **Dragon Playground** ejecuta el compilador completo dentro del navegador (con [Pyodide](https://pyodide.org)), sin instalar nada: se escribe código Dragon, se compila con `Ctrl + Enter` y cada fase aparece en su propia pestaña. Además:
+
+* **Estado de las 7 fases:** una tarjeta por fase dice si *Pasó*, si *Falló aquí* o si *No se alcanzó*, con un dato clave (tokens, instrucciones, spills, error de ejecución).
+* **Tokens en colores:** cada token es una etiqueta coloreada según su categoría (palabra clave, tipo, identificador, número, texto, operador, puntuación) y los errores léxicos aparecen en rojo en su posición.
+* **Recorrido de una línea:** al hacer clic en el número de una línea se ve su viaje por las 7 fases: sus tokens, su subárbol del AST, los símbolos que declara, sus cuádruplas antes y después de optimizar, su ensamblador y cuántas veces se ejecutó. El mismo recorrido se obtiene en la terminal con `--linea N`.
+* Las líneas con errores se marcan en el editor.
 
 **Dragon** es un lenguaje imperativo pequeño, con palabras clave en español y tipos estáticos. Este repositorio contiene su **compilador completo**, que lleva un archivo fuente `.drg` por todas las fases del curso:
 
@@ -20,7 +25,7 @@ Código fuente → Tokens → AST → Análisis semántico → TAC → TAC optim
 ```
 
 * Escrito en **Python 3.10+**, **sin ninguna librería externa**: no hay que instalar nada con `pip`.
-* **95 pruebas automáticas** (`unittest`).
+* **113 pruebas automáticas** (`unittest`).
 * **Funciones** con parámetros, recursión y marcos de pila; **heap** con reserva, liberación y detección de fugas, *dangling pointers* y *double free*.
 * Detecta y reporta errores **léxicos, sintácticos y semánticos con línea y columna exactas**, todos en una sola compilación y sin detener el programa abruptamente.
 * **Autómatas del lexer** construidos paso a paso: RegEx → NFA (Thompson) → DFA (subconjuntos) → DFA mínimo (Hopcroft).
@@ -74,7 +79,10 @@ python main.py ejemplos/programa_memoria.drg
 python main.py ejemplos/programa_correcto.drg --automatas --fases 1
 python main.py ejemplos/programa_correcto.drg --interpretar
 
-# 8. Ejecutar las pruebas automáticas
+# 8. Seguir una línea por las 7 fases (la 9 es: entero ataque_base = 10 * 2 + 5;)
+python main.py ejemplos/programa_correcto.drg --linea 9
+
+# 9. Ejecutar las pruebas automáticas
 python -m unittest -v
 ```
 
@@ -93,7 +101,7 @@ dragon mi_programa.drg
 
 ### Integración continua
 
-Con cada commit, **GitHub Actions** ejecuta las 95 pruebas y compila todos los ejemplos (como script y como módulo `python -m dragon`) en **Windows, Linux y macOS con Python 3.10, 3.11, 3.12 y 3.13**: 12 combinaciones. Otro flujo publica el playground en GitHub Pages. Además, **SonarCloud** analiza la calidad y la seguridad del código en cada commit.
+Con cada commit, **GitHub Actions** ejecuta las 113 pruebas y compila todos los ejemplos (como script y como módulo `python -m dragon`) en **Windows, Linux y macOS con Python 3.10, 3.11, 3.12 y 3.13**: 12 combinaciones. Otro flujo publica el playground en GitHub Pages. Además, **SonarCloud** analiza la calidad y la seguridad del código en cada commit.
 
 ### Opciones de la línea de comandos
 
@@ -105,6 +113,7 @@ Con cada commit, **GitHub Actions** ejecuta las 95 pruebas y compila todos los e
 | `--automatas` | Muestra los autómatas del lexer: RegEx → NFA → DFA → DFA mínimo |
 | `--interpretar` | Ejecuta el programa con el intérprete del AST, sin compilarlo |
 | `--fases 1,4,6` | Muestra solo las fases indicadas (1 a 7) |
+| `--linea N` | Sigue la línea N por las 7 fases: estado de cada fase, tokens, AST, símbolos, TAC, TAC optimizado, ensamblador y ejecuciones |
 | `--sin-color` | Desactiva los colores de la consola |
 | `--salida DIR` | Carpeta de los archivos generados (por defecto `salida/`) |
 
@@ -442,7 +451,7 @@ Para no generar **errores en cascada**, un error sintáctico no se reporta si en
 python -m unittest -v
 ```
 
-Son 95 pruebas en `tests/`: lexer (7), autómatas (6), parser (8), semántico (15), funciones (17), memoria (8), optimizador (9), código objetivo (6), grafo de flujo, intérprete y coloreo (7) e integración (12). Entre otras cosas verifican que nunca se emiten dos operandos de memoria en una instrucción, que dos temporales que interfieren nunca comparten registro, que el DFA mínimo tiene 5 estados y que las cuatro ejecuciones coinciden con 2, 3, 4, 6 y 8 registros y con los dos asignadores.
+Son 113 pruebas en `tests/`: lexer (7), autómatas (6), parser (8), semántico (15), funciones (17), memoria (8), optimizador (9), código objetivo (6), grafo de flujo, intérprete y coloreo (7), recorrido por línea y estado de las fases (18) e integración (12). Entre otras cosas verifican que nunca se emiten dos operandos de memoria en una instrucción, que dos temporales que interfieren nunca comparten registro, que el DFA mínimo tiene 5 estados y que las cuatro ejecuciones coinciden con 2, 3, 4, 6 y 8 registros y con los dos asignadores.
 
 ---
 
@@ -453,7 +462,7 @@ Son 95 pruebas en `tests/`: lexer (7), autómatas (6), parser (8), semántico (1
 | **1. Demostración de pipeline continuo** | `python main.py archivo.drg` muestra en consola Tokens → AST → Tabla de símbolos → TAC → TAC optimizado y grafo de flujo → Ensamblador → Ejecución, y guarda los `.tac`, `.asm` y `.cfg.dot` |
 | **2. Manejo riguroso de errores** | Errores léxicos, sintácticos y de tipos con **línea y columna exactas**, marca `^` en el código, todos en una sola pasada y sin tracebacks: el programa nunca se detiene abruptamente. Los errores de ejecución (memoria, recursión) también se reportan sin cerrar el compilador |
 | **3. Gestión de recursos de hardware** | Tabla de símbolos con ámbitos, nombres únicos y **direcciones** (globales en `.data`, locales en el marco); **marcos de pila** por llamada; **heap** con reserva, liberación y fugas; asignación de **registros** con análisis de vida, **Belady** o **coloreo de grafos**, y **spill** a la pila |
-| **4. Defensa de los casos de prueba** | `programa_correcto.drg` (flujo completo) y `programa_estres.drg` (estrés del analizador semántico), más 9 programas adicionales y 95 pruebas automáticas |
+| **4. Defensa de los casos de prueba** | `programa_correcto.drg` (flujo completo) y `programa_estres.drg` (estrés del analizador semántico), más 9 programas adicionales y 113 pruebas automáticas |
 
 ---
 
@@ -479,11 +488,12 @@ compilador-dragon/
 │   ├── coloreo.py             # Fase 6: asignación de registros por coloreo (Chaitin-Briggs)
 │   ├── emulador.py            # Fase 7: máquinas virtuales de TAC y ASM
 │   ├── interprete.py          # Fase 7: intérprete del AST
+│   ├── traza.py               # Estado de las fases y recorrido de una línea (--linea N, playground)
 │   ├── errores.py             # Reporte centralizado de errores
 │   └── utilidades.py          # Semántica de operadores, heap, formato y colores
 ├── ejemplos/                  # Programas .drg de prueba
 │   └── errores/               # Un ejemplo por cada tipo de error
-├── tests/                     # 95 pruebas automáticas (unittest)
+├── tests/                     # 113 pruebas automáticas (unittest)
 └── docs/
     └── GUIA_SUSTENTACION.md   # Guion de la sustentación y preguntas frecuentes
 ```

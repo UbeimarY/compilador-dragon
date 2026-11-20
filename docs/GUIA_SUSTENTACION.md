@@ -17,7 +17,8 @@ Todos los comandos se ejecutan desde la carpeta del repositorio.
 | 12–13 | Verificación | `python main.py ejemplos/programa_correcto.drg --fases 7` | "Cuatro ejecuciones iguales: el intérprete del AST, el TAC, el TAC optimizado y el ensamblador. La semántica se preservó." |
 | 13–14 | Errores | `python main.py ejemplos/programa_estres.drg` y `python main.py ejemplos/errores/error_funciones.drg` | "16 errores con línea, columna y `^`, sin detenerse; y los errores de funciones: argumentos, retorno, `vacio`." |
 | 14 | Errores en ejecución | `python main.py ejemplos/errores/error_memoria.drg --fases 7` | "Compila, pero usa memoria liberada: dangling pointer detectado en las cuatro ejecuciones." |
-| Cierre | Pruebas | `python -m unittest` | "95 pruebas automáticas; GitHub Actions las corre en Windows, Linux y macOS, y SonarCloud revisa la seguridad." |
+| 14–15 | Una línea por las 7 fases | `python main.py ejemplos/programa_correcto.drg --linea 9` (o clic en el número de línea en el playground) | "Seguimos `entero ataque_base = 10 * 2 + 5;`: 9 tokens, su subárbol, su símbolo en 0x100C, 3 cuádruplas que el optimizador pliega en `ataque_base = 25`, un solo `MOV` y se ejecuta una vez. En el playground las tarjetas de arriba dicen qué fase pasó y cuál falló." |
+| Cierre | Pruebas | `python -m unittest` | "113 pruebas automáticas; GitHub Actions las corre en Windows, Linux y macOS, y SonarCloud revisa la seguridad." |
 
 Si el tiempo es corto: líneas 1, 4, 6, 9 y 10.
 

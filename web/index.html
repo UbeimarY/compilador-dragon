@@ -28,7 +28,7 @@
   html, body { height: 100%; margin: 0; }
   body {
     background: var(--fondo); color: var(--texto); font-family: var(--sans);
-    display: grid; grid-template-rows: auto 1fr auto; min-height: 100vh;
+    display: grid; grid-template-rows: auto auto 1fr auto; min-height: 100vh;
   }
   header {
     display: flex; align-items: center; gap: 14px; padding: 12px 20px;
@@ -102,12 +102,91 @@
   @keyframes latir { 50% { opacity: .3; } }
   .estado .metricas { margin-left: auto; color: var(--tenue); font-family: var(--mono); font-size: 12px; }
 
-  pre#vista {
-    flex: 1; margin: 0; padding: 16px 18px; overflow: auto; font: 12.5px/1.55 var(--mono);
-    white-space: pre; color: var(--texto); min-height: 420px;
-  }
   .e { color: var(--error); } .w { color: var(--aviso); } .k { color: var(--ok); }
   .s { color: var(--brasa); font-weight: 600; } .d { color: var(--tenue); } .t { color: var(--azul); }
+
+  /* ---------- estado de las 7 fases */
+  .fases-wrap { padding: 12px 20px 8px; border-bottom: 1px solid var(--borde); background: var(--panel); }
+  .fases { display: grid; grid-template-columns: repeat(7, minmax(128px, 1fr)); gap: 10px; overflow-x: auto; }
+  .fase {
+    text-align: left; display: grid; gap: 3px; padding: 9px 11px 10px; cursor: pointer;
+    background: var(--panel-2); border: 1px solid var(--borde); border-top: 3px solid var(--tenue);
+    border-radius: 8px; color: var(--texto); font-size: 13px;
+  }
+  .fase:hover { border-color: #3a4352; }
+  .fase.activa { outline: 2px solid var(--brasa); outline-offset: 1px; }
+  .fase .fcab { display: flex; align-items: center; gap: 7px; font-weight: 700; }
+  .fase .fn {
+    width: 20px; height: 20px; border-radius: 5px; display: grid; place-items: center; flex: none;
+    font: 700 11px var(--mono); background: var(--tenue); color: #0f1115;
+  }
+  .fase .fsem { color: var(--tenue); font-size: 11.5px; }
+  .fase .fest { font-size: 12px; font-weight: 700; }
+  .fase .fdet { color: var(--tenue); font: 11px var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .fase.f-ok { border-top-color: var(--ok); } .fase.f-ok .fn { background: var(--ok); } .fase.f-ok .fest { color: var(--ok); }
+  .fase.f-fallo { border-top-color: var(--error); background: #24161a; } .fase.f-fallo .fn { background: var(--error); }
+  .fase.f-fallo .fest { color: var(--error); }
+  .fase.f-error { border-top-color: #c2505c; } .fase.f-error .fn { background: #c2505c; } .fase.f-error .fest { color: #e57b86; }
+  .fase.f-omitida { opacity: .55; } .fase.f-omitida .fest { color: var(--tenue); }
+  .leyenda { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 8px; font-size: 11.5px; color: var(--tenue); }
+  .leyenda b { font-weight: 700; } .leyenda .ok { color: var(--ok); } .leyenda .mal { color: var(--error); }
+
+  /* ---------- vista de salida */
+  #vista { flex: 1; overflow: auto; min-height: 420px; }
+  pre.texto {
+    margin: 0; padding: 16px 18px; font: 12.5px/1.55 var(--mono); white-space: pre; color: var(--texto);
+  }
+
+  /* ---------- tokens en colores */
+  .tk-cab { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 14px 18px 10px;
+            border-bottom: 1px solid var(--borde); font-size: 12px; color: var(--tenue); position: sticky; top: 0;
+            background: var(--fondo); z-index: 1; }
+  .tk-cab .total { color: var(--texto); font-weight: 700; font-family: var(--mono); }
+  .tk-leyenda { display: inline-flex; align-items: center; gap: 5px; }
+  .tk-leyenda i { width: 10px; height: 10px; border-radius: 3px; background: var(--c); display: inline-block; }
+  .tk-filas { padding: 8px 18px 16px; }
+  .tk-fila { display: flex; gap: 10px; align-items: flex-start; padding: 4px 0; border-bottom: 1px dashed #20252e; }
+  .tk-ln { min-width: 30px; text-align: right; color: #5b6573; font: 12px/24px var(--mono); cursor: pointer; flex: none; }
+  .tk-ln:hover { color: var(--brasa); }
+  .chips { display: flex; flex-wrap: wrap; gap: 5px; }
+  .chip {
+    display: inline-flex; align-items: baseline; gap: 6px; padding: 2px 8px; border-radius: 6px;
+    font: 12.5px/18px var(--mono); color: var(--c);
+    background: color-mix(in srgb, var(--c) 13%, transparent); border: 1px solid color-mix(in srgb, var(--c) 45%, transparent);
+  }
+  .chip small { font: 700 9px var(--sans); letter-spacing: .4px; text-transform: uppercase; opacity: .8; }
+  .c-clave { --c: #c792ea; } .c-tipo { --c: #6cb6ff; } .c-identificador { --c: #d7dce4; } .c-numero { --c: #f5c451; }
+  .c-texto { --c: #4fd18b; } .c-booleano { --c: #ff9e64; } .c-operador { --c: #ff7a3d; } .c-puntuacion { --c: #8a94a3; }
+  .c-error { --c: #ff5d6c; font-weight: 700; cursor: help; }
+  details.crudo { padding: 0 18px 18px; color: var(--tenue); font-size: 12px; }
+  details.crudo summary { cursor: pointer; padding: 6px 0; }
+  details.crudo pre.texto { padding: 8px 0; }
+
+  /* ---------- recorrido de una línea */
+  .gutter div[data-n] { cursor: pointer; }
+  .gutter div[data-n]:hover { color: var(--brasa); }
+  .gutter div.sel, .gutter div.sel:hover { color: #1a0d05; background: var(--brasa); border-radius: 3px; font-weight: 700; }
+  .ayuda-editor { padding: 6px 14px; font-size: 11.5px; color: var(--tenue); background: var(--panel); border-top: 1px solid var(--borde); }
+  .rec { padding: 14px 18px 22px; display: grid; gap: 10px; }
+  .rec-cab { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+  .rec-cab h2 { margin: 0; font-size: 15px; }
+  .rec-cab code { font: 12.5px var(--mono); background: var(--panel-2); border: 1px solid var(--borde);
+                  padding: 4px 8px; border-radius: 6px; white-space: pre; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+  .rec-cab .nav { margin-left: auto; display: flex; gap: 6px; }
+  .rec-cab .nav button { cursor: pointer; padding: 4px 10px; font-size: 12px; }
+  .aviso-cambio { color: var(--aviso); font-size: 12px; }
+  .paso { border: 1px solid var(--borde); border-left: 3px solid var(--tenue); border-radius: 8px; background: var(--panel); }
+  .paso header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 10px; padding: 8px 12px; }
+  .paso header .fn { font: 700 11px var(--mono); color: #0f1115; background: var(--tenue); border-radius: 4px; padding: 1px 6px; }
+  .paso header b { font-size: 13px; } .paso header small { color: var(--tenue); font-size: 11.5px; }
+  .paso header .nota { margin-left: auto; color: var(--tenue); font-size: 12px; }
+  .paso pre { margin: 0; padding: 2px 12px 10px; font: 12px/1.55 var(--mono); white-space: pre; overflow-x: auto; color: var(--texto); }
+  .paso .chips { padding: 2px 12px 10px; }
+  .paso .errs { padding: 0 12px 10px; font: 12px/1.5 var(--mono); color: var(--error); white-space: pre-wrap; }
+  .paso.p-ok { border-left-color: var(--ok); } .paso.p-ok header .fn { background: var(--ok); }
+  .paso.p-fallo { border-left-color: var(--error); } .paso.p-fallo header .fn { background: var(--error); }
+  .paso.p-omitida { opacity: .55; }
+  .vacio { padding: 28px 18px; color: var(--tenue); font-size: 13px; line-height: 1.6; }
 
   footer {
     padding: 10px 20px; border-top: 1px solid var(--borde); color: var(--tenue); font-size: 12px;
@@ -127,6 +206,16 @@
     <a href="https://github.com/UbeimarY/compilador-dragon#2-el-lenguaje-dragon" target="_blank" rel="noopener">Referencia del lenguaje</a>
   </nav>
 </header>
+
+<section class="fases-wrap" aria-label="Estado de las 7 fases">
+  <div class="fases" id="fases"></div>
+  <div class="leyenda">
+    <span><b class="ok">✓</b> Pasó</span><span><b class="mal">✗</b> Falló aquí</span>
+    <span><b class="mal">✗</b> Con errores (después de la primera fase que falló)</span>
+    <span><b>○</b> No se alcanzó</span>
+    <span>· Clic en una fase para ver su salida</span>
+  </div>
+</section>
 
 <main>
   <section class="columna">
@@ -166,6 +255,7 @@
       <textarea id="codigo" spellcheck="false" autocomplete="off" autocapitalize="off"
                 aria-label="Código fuente Dragon"></textarea>
     </div>
+    <div class="ayuda-editor">Clic en el número de una línea para ver su recorrido por las 7 fases.</div>
   </section>
 
   <section class="salida">
@@ -174,12 +264,13 @@
       <span class="punto"></span><span id="estado-texto">Cargando Python en el navegador (Pyodide)…</span>
       <span class="metricas" id="metricas"></span>
     </div>
-    <pre id="vista" aria-live="polite"></pre>
+    <div id="vista" aria-live="polite"></div>
   </section>
 </main>
 
 <footer>
   <span>Atajo: <code>Ctrl</code> + <code>Enter</code> compila</span>
+  <span>Terminal: <code>python main.py programa.drg --linea N</code> muestra el mismo recorrido</span>
   <span>Todo se ejecuta localmente con <a href="https://pyodide.org" target="_blank" rel="noopener">Pyodide</a>: el código no se envía a ningún servidor.</span>
   <span>Proyecto final · Compiladores · Universidad Cooperativa de Colombia</span>
 </footer>
@@ -189,28 +280,54 @@
         crossorigin="anonymous"></script>
 <script>
 const MODULOS = ["__init__", "ast_nodos", "automatas", "cli", "codegen", "coloreo", "emulador", "errores",
-                 "flujo", "interprete", "lexer", "optimizador", "parser", "semantico", "tac", "utilidades"];
+                 "flujo", "interprete", "lexer", "optimizador", "parser", "semantico", "tac", "traza", "utilidades"];
 const FASES = [
   ["1", "Tokens"], ["automatas", "Autómatas"], ["2", "AST"], ["3", "Semántico"], ["4", "TAC"],
-  ["5", "Optimización"], ["6", "Ensamblador"], ["7", "Ejecución"], ["errores", "Errores"],
+  ["5", "Optimización"], ["6", "Ensamblador"], ["7", "Ejecución"], ["linea", "Recorrido de línea"],
+  ["errores", "Errores"],
+];
+const NOMBRES_FASES = [
+  [1, "Léxico", "Semana 2"], [2, "Sintáctico", "Semanas 3 y 4"], [3, "Semántico", "Semanas 5 y 6"],
+  [4, "Código intermedio", "Semana 7"], [5, "Optimización", "Semana 9"], [6, "Código objetivo", "Semana 10"],
+  [7, "Ejecución y memoria", "Semanas 1 y 8"],
+];
+const SIMBOLO = { ok: "✓", fallo: "✗", error: "✗", omitida: "○" };
+const CATEGORIAS = [
+  ["clave", "Palabra clave"], ["tipo", "Tipo"], ["identificador", "Identificador"], ["numero", "Número"],
+  ["texto", "Texto"], ["booleano", "Booleano"], ["operador", "Operador"], ["puntuacion", "Puntuación"],
+  ["error", "Error léxico"],
 ];
 
 const $ = (id) => document.getElementById(id);
 const codigo = $("codigo"), gutter = $("gutter"), vista = $("vista");
 let pyodide = null, secciones = {}, activa = "7";
+let ultimo = null, lineaSel = null, marcasActuales = {}, codigoCompilado = "", hayErroresActual = false;
 
 // ------------------------------------------------------------ editor
-function actualizarGutter(marcas = {}) {
+function actualizarGutter(marcas = marcasActuales) {
+  marcasActuales = marcas;
   const n = codigo.value.split("\n").length;
   let html = "";
   for (let i = 1; i <= n; i++) {
     const m = marcas[i];
-    html += m ? `<div class="${m.clase}" title="${escapar(m.texto)}">${i}</div>` : `<div>${i}</div>`;
+    const clase = [m ? m.clase : "", i === lineaSel ? "sel" : ""].join(" ").trim();
+    const titulo = m ? m.texto : `Ver el recorrido de la línea ${i}`;
+    html += `<div data-n="${i}" class="${clase}" title="${escapar(titulo)}">${i}</div>`;
   }
   gutter.innerHTML = html;
   gutter.scrollTop = codigo.scrollTop;
 }
 codigo.addEventListener("input", () => actualizarGutter());
+gutter.addEventListener("click", (e) => {
+  const d = e.target.closest("div[data-n]");
+  if (d) seleccionarLinea(Number(d.dataset.n));
+});
+// Con el recorrido abierto, hacer clic en el código sigue a la línea del cursor
+codigo.addEventListener("click", () => {
+  if (activa !== "linea" || !ultimo) return;
+  const n = codigo.value.slice(0, codigo.selectionStart).split("\n").length;
+  if (n !== lineaSel) seleccionarLinea(n);
+});
 codigo.addEventListener("scroll", () => { gutter.scrollTop = codigo.scrollTop; });
 codigo.addEventListener("keydown", (e) => {
   if (e.key === "Tab") {
@@ -223,20 +340,131 @@ codigo.addEventListener("keydown", (e) => {
 });
 
 // ------------------------------------------------------------ pestañas
-function dibujarPestanas(hayErrores, exito) {
+function dibujarPestanas(hayErrores = hayErroresActual) {
+  hayErroresActual = hayErrores;
   const cont = $("pestanas");
   cont.innerHTML = "";
   for (const [clave, nombre] of FASES) {
     if (clave === "errores" && !hayErrores) continue;
     const b = document.createElement("button");
     b.setAttribute("role", "tab");
-    b.innerHTML = clave === "errores" ? `⚠ ${nombre}` : `<span class="n">${clave === "automatas" ? "1b" : clave}</span>${nombre}`;
+    if (clave === "errores") b.innerHTML = `⚠ ${nombre}`;
+    else if (clave === "linea") b.innerHTML = `🔎 ${lineaSel ? `Línea ${lineaSel}` : nombre}`;
+    else b.innerHTML = `<span class="n">${clave === "automatas" ? "1b" : clave}</span>${nombre}`;
     if (clave === "errores") b.classList.add("errores");
-    if (!(clave in secciones)) b.disabled = true;
+    const disponible = clave === "linea" ? Boolean(ultimo && lineaSel) : clave in secciones;
+    if (!disponible) b.disabled = true;
+    if (clave === "linea" && !disponible) b.title = "Haga clic en el número de una línea del editor";
     if (clave === activa) b.classList.add("activa");
-    b.onclick = () => { activa = clave; dibujarPestanas(hayErrores, exito); mostrar(); };
+    b.onclick = () => irA(clave);
     cont.appendChild(b);
   }
+  document.querySelectorAll(".fase").forEach((c) => c.classList.toggle("activa", c.dataset.fase === activa));
+}
+
+function irA(clave) {
+  activa = clave;
+  dibujarPestanas();
+  mostrar();
+}
+
+// ------------------------------------------------------------ estado de las fases
+function dibujarFases(estados) {
+  const cont = $("fases");
+  cont.innerHTML = "";
+  NOMBRES_FASES.forEach(([n, nombre, semanas], i) => {
+    const f = estados && estados[i];
+    const est = f ? f.estado : "omitida";
+    const b = document.createElement("button");
+    b.className = `fase f-${est}`;
+    b.dataset.fase = String(n);
+    b.title = f && f.mensaje ? f.mensaje : `Ver la salida de la fase ${n}`;
+    b.innerHTML = `<span class="fcab"><span class="fn">${n}</span>${nombre}</span>
+      <span class="fsem">${semanas}</span>
+      <span class="fest">${SIMBOLO[est]} ${f ? f.etiqueta : "Sin compilar"}</span>
+      <span class="fdet">${f && f.detalle ? escapar(f.detalle) : "&nbsp;"}</span>`;
+    b.onclick = () => irA(String(n));
+    if (String(n) === activa) b.classList.add("activa");
+    cont.appendChild(b);
+  });
+}
+
+// ------------------------------------------------------------ tokens en colores
+function chip(t) {
+  if (t.categoria === "error") {
+    return `<span class="chip c-error" title="${escapar(t.mensaje || "")}"><small>error</small>C:${t.columna}</span>`;
+  }
+  return `<span class="chip c-${t.categoria}" title="${escapar(t.tipo)} · L:${t.linea} C:${t.columna}"><small>${escapar(t.tipo)}</small>${escapar(t.lexema)}</span>`;
+}
+
+function vistaTokens() {
+  const tokens = ultimo ? ultimo.tokens : [];
+  const conteo = {};
+  for (const t of tokens) conteo[t.categoria] = (conteo[t.categoria] || 0) + 1;
+  const validos = tokens.filter((t) => t.categoria !== "error").length;
+  let html = `<div class="tk-cab"><span class="total">${validos} tokens</span>`;
+  for (const [cat, nombre] of CATEGORIAS) {
+    if (!conteo[cat]) continue;
+    html += `<span class="tk-leyenda c-${cat}"><i></i>${nombre} · ${conteo[cat]}</span>`;
+  }
+  html += `</div><div class="tk-filas">`;
+  const porLinea = new Map();
+  for (const t of tokens) {
+    if (!porLinea.has(t.linea)) porLinea.set(t.linea, []);
+    porLinea.get(t.linea).push(t);
+  }
+  for (const [linea, lista] of porLinea) {
+    html += `<div class="tk-fila"><span class="tk-ln" data-n="${linea}" title="Ver el recorrido de la línea ${linea}">${linea}</span>`
+          + `<div class="chips">${lista.map(chip).join("")}</div></div>`;
+  }
+  html += `</div><details class="crudo"><summary>Ver la tabla de tokens en texto</summary>`
+        + `<pre class="texto">${resaltar(secciones["1"] ?? "")}</pre></details>`;
+  return html;
+}
+
+// ------------------------------------------------------------ recorrido de una línea
+function seleccionarLinea(n) {
+  lineaSel = n;
+  activa = "linea";
+  actualizarGutter();
+  dibujarPestanas();
+  mostrar();
+}
+
+function vistaRecorrido() {
+  if (!ultimo || !lineaSel) {
+    return `<div class="vacio">Haga clic en el número de una línea del editor para seguirla por las 7 fases:
+      sus tokens, su subárbol del AST, los símbolos que declara, sus cuádruplas TAC antes y después de optimizar,
+      su ensamblador y cuántas veces se ejecutó.</div>`;
+  }
+  const f = pyodide.globals.get("_recorrido");
+  const r = JSON.parse(f(lineaSel));
+  f.destroy();
+  if (lineaSel > r.total_lineas) {
+    return `<div class="vacio">La línea ${lineaSel} no existe en el programa compilado (${r.total_lineas} líneas).</div>`;
+  }
+  const cambio = codigo.value !== codigoCompilado
+    ? `<div class="aviso-cambio">⚠ El código cambió desde la última compilación: pulse Compilar para actualizar el recorrido.</div>` : "";
+  let html = `<div class="rec"><div class="rec-cab"><h2>Recorrido de la línea ${lineaSel}</h2>
+    <code>${escapar(r.texto.trim() || "(línea vacía)")}</code>
+    <span class="nav"><button id="rec-ant" ${lineaSel <= 1 ? "disabled" : ""}>◀ Anterior</button>
+    <button id="rec-sig" ${lineaSel >= r.total_lineas ? "disabled" : ""}>Siguiente ▶</button></span></div>${cambio}`;
+  for (const [n, nombre, semanas] of NOMBRES_FASES) {
+    const fase = r.fases[String(n)];
+    const global = r.estados[n - 1].estado;
+    const clase = fase.errores.length ? "p-fallo" : global === "omitida" ? "p-omitida"
+                : (fase.lineas.length || (fase.tokens && fase.tokens.length)) ? "p-ok" : "";
+    html += `<section class="paso ${clase}"><header><span class="fn">${n}</span><b>${nombre}</b><small>${semanas}</small>`
+          + `<span class="nota">${escapar(fase.nota)}</span></header>`;
+    if (n === 1 && fase.tokens && fase.tokens.length) {
+      html += `<div class="chips">${fase.tokens.filter((t) => t.categoria !== "error").map(chip).join("")}</div>`;
+    } else if (fase.lineas.length) {
+      html += `<pre>${escapar(fase.lineas.join("\n"))}</pre>`;
+    }
+    if (fase.errores.length) html += `<div class="errs">${escapar(fase.errores.join("\n"))}</div>`;
+    html += `</section>`;
+  }
+  return html + `</div>`;
 }
 
 function escapar(t) {
@@ -258,7 +486,20 @@ function resaltar(texto) {
 }
 
 function mostrar() {
-  vista.innerHTML = resaltar(secciones[activa] ?? "");
+  if (activa === "linea") {
+    vista.innerHTML = vistaRecorrido();
+    const ant = $("rec-ant"), sig = $("rec-sig");
+    if (ant) ant.onclick = () => seleccionarLinea(lineaSel - 1);
+    if (sig) sig.onclick = () => seleccionarLinea(lineaSel + 1);
+  } else if (activa === "1" && ultimo && ultimo.tokens) {
+    vista.innerHTML = vistaTokens();
+    vista.querySelectorAll(".tk-ln").forEach((el) => { el.onclick = () => seleccionarLinea(Number(el.dataset.n)); });
+  } else if (activa in secciones) {
+    vista.innerHTML = `<pre class="texto">${resaltar(secciones[activa])}</pre>`;
+  } else {
+    vista.innerHTML = `<div class="vacio">Esta fase no se alcanzó: el programa tiene errores en las fases de análisis.
+      Revise la pestaña ⚠ Errores o las líneas marcadas en rojo en el editor.</div>`;
+  }
   vista.scrollTop = 0;
 }
 
@@ -272,6 +513,13 @@ function estado(clase, texto, metricas = "") {
 const PY_COMPILAR = `
 import io, contextlib, re, json
 from dragon.cli import main as _main
+from dragon.traza import analizar as _analizar, estado_fases as _estado_fases
+from dragon.traza import tokens_coloreados as _tokens_coloreados, recorrido_linea as _recorrido_linea
+
+_ULTIMO = None
+
+def _recorrido(n):
+    return json.dumps(_recorrido_linea(_ULTIMO, int(n)))
 
 def _compilar(codigo, registros, optimizar, asignador, automatas):
     with open("programa.drg", "w", encoding="utf-8") as f:
@@ -322,8 +570,13 @@ def _compilar(codigo, registros, optimizar, asignador, automatas):
             metricas["ejecucion"] = limpia[len("[ERROR DE EJECUCIÓN] "):].split(" (instrucción")[0]
 
     errores = re.findall(r"^\\[(LÉXICO|SINTÁCTICO|SEMÁNTICO|ADVERTENCIA)\\] L:(\\d+) C:(\\d+) — (.*)$", texto, re.M)
+
+    # Análisis estructurado: estado de cada fase, tokens con categoría y recorrido por línea
+    global _ULTIMO
+    _ULTIMO = _analizar(codigo, registros, optimizar, asignador)
     return json.dumps({"codigo": codigo_salida, "secciones": secciones, "errores": errores,
-                       "metricas": metricas, "preservada": "la semántica se preservó" in texto})
+                       "metricas": metricas, "preservada": "la semántica se preservó" in texto,
+                       "estados": _estado_fases(_ULTIMO), "tokens": _tokens_coloreados(_ULTIMO)})
 `;
 
 async function iniciar() {
@@ -376,6 +629,10 @@ function compilar() {
   }
   const ms = Math.round(performance.now() - inicio);
   secciones = r.secciones;
+  ultimo = r;
+  codigoCompilado = codigo.value;
+  if (lineaSel && lineaSel > codigo.value.split("\n").length) lineaSel = null;
+  dibujarFases(r.estados);
 
   const marcas = {};
   for (const [fase, linea, col, msg] of r.errores) {
@@ -388,10 +645,10 @@ function compilar() {
 
   const hayErrores = "errores" in secciones;
   if (hayErrores) {
-    activa = "errores";
+    if (activa !== "linea" || !lineaSel) activa = "errores";
     estado("mal", `${r.metricas.errores ?? "Hay"} error(es): no se genera código`, `${ms} ms`);
   } else {
-    if (!(activa in secciones) || activa === "errores") activa = "7";
+    if ((!(activa in secciones) && activa !== "linea") || activa === "errores" || (activa === "linea" && !lineaSel)) activa = "7";
     const m = r.metricas, preservada = r.preservada;
     const partes = [];
     if (m.tac_antes) partes.push(`TAC ${m.tac_antes}→${m.tac_despues}`);
@@ -405,12 +662,13 @@ function compilar() {
              partes.join(" · "));
     }
   }
-  dibujarPestanas(hayErrores, !hayErrores);
+  dibujarPestanas(hayErrores);
   mostrar();
 }
 
 actualizarGutter();
-dibujarPestanas(false, false);
+dibujarFases(null);
+dibujarPestanas(false);
 iniciar();
 </script>
 </body>
