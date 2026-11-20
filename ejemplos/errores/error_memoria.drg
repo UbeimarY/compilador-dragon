@@ -1,0 +1,8 @@
+// Error en TIEMPO DE EJECUCIÓN (Semana 8): el programa compila, pero usa
+// memoria que ya devolvió al heap (dangling pointer).
+// Pruebe también a cambiar la última línea por 'liberar(mensaje);'
+// para ver la doble liberación (double free).
+texto mensaje = "Hola " + "dragón";
+imprimir(mensaje);
+liberar(mensaje);
+imprimir(mensaje);                    // ← usa un puntero colgante

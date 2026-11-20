@@ -1,0 +1,25 @@
+// ================================================================
+//  programa_memoria.drg — Heap: reservar, liberar y fugas (Semana 8)
+//  Cada concatenación de textos reserva un bloque en el heap (malloc);
+//  liberar(x) lo devuelve (free). Al final el compilador reporta los
+//  bloques que nunca se liberaron: FUGAS DE MEMORIA.
+//      python main.py ejemplos/programa_memoria.drg --fases 7
+// ================================================================
+
+texto heroe = "Aria";              // cadena constante: no está en el heap
+texto titulo = heroe + " la valiente";      // malloc #1
+imprimir(titulo);
+
+entero i = 1;
+mientras (i <= 3) {
+    texto linea = titulo + " · ronda";      // malloc #2, #3, #4
+    imprimir(linea);
+    liberar(linea);                          // free: sin fuga dentro del ciclo
+    i = i + 1;
+}
+
+texto olvidado = heroe + " (sin liberar)";  // malloc #5: nunca se libera → fuga
+imprimir(olvidado);
+
+liberar(titulo);                             // free de #1
+imprimir("fin");

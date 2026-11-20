@@ -12,28 +12,31 @@ entero turno = 1;
 booleano dragon_vivo = verdadero;
 booleano modo_depuracion = falso;
 
+// Función con parámetros, variables locales y varios 'retornar'
+funcion entero calcular_dano(entero base, entero numero_turno) {
+    si (numero_turno % 3 == 0) {
+        real critico = base * multiplicador;   // coerción implícita entero → real
+        imprimir("¡Golpe crítico!");
+        imprimir(critico);
+        retornar base * 2;
+    } sino si (numero_turno % 2 == 0) {
+        retornar base - 5;                     // el dragón se defiende
+    }
+    retornar base + numero_turno;              // ataque normal con bonificación
+}
+
 /* Este bloque nunca se ejecuta: el optimizador lo
    detecta y lo elimina como código inalcanzable. */
 si (modo_depuracion) {
     imprimir("[debug] iniciando simulación");
 }
 
-imprimir("Comienza la batalla de " + heroe);
+texto inicio = "Comienza la batalla de " + heroe;   // reserva memoria en el heap
+imprimir(inicio);
+liberar(inicio);                                     // y la devuelve
 
 mientras (dragon_vivo && turno <= 6) {
-    entero dano = ataque_base;          // variable local del ciclo
-
-    si (turno % 3 == 0) {
-        real critico = dano * multiplicador;   // coerción implícita entero → real
-        imprimir("¡Golpe crítico!");
-        imprimir(critico);
-        dano = dano * 2;
-    } sino si (turno % 2 == 0) {
-        dano = dano - 5;                // el dragón se defiende
-    } sino {
-        dano = dano + turno;            // ataque normal con bonificación
-    }
-
+    entero dano = calcular_dano(ataque_base, turno);
     vida_dragon = vida_dragon - dano;
     si (vida_dragon <= 0) {
         vida_dragon = 0;
@@ -45,7 +48,9 @@ mientras (dragon_vivo && turno <= 6) {
 }
 
 si (!dragon_vivo) {
-    imprimir(heroe + " derrotó al dragón");
+    texto victoria = heroe + " derrotó al dragón";
+    imprimir(victoria);
+    liberar(victoria);
 } sino {
     imprimir("El dragón escapó");
 }

@@ -1,0 +1,7 @@
+// Error en TIEMPO DE EJECUCIÓN (Semana 8): recursión sin caso base.
+// Cada llamada apila un marco nuevo hasta agotar la pila: Stack Overflow.
+funcion entero cuenta_regresiva(entero n) {
+    imprimir(n);
+    retornar cuenta_regresiva(n - 1);  // nunca se detiene
+}
+imprimir(cuenta_regresiva(3));

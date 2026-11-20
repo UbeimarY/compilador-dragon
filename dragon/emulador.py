@@ -163,6 +163,7 @@ class EmuladorASM:
         self.pila: dict[int, object] = {}
         self.comparacion: tuple = (0, 0)
         self.parametros: list = []
+        self.profundidad = 0   # llamadas anidadas en curso
 
     def _direccion_pila(self, operando: str):
         """'[FP-8]' → dirección numérica; None si no es un acceso a la pila."""
@@ -278,6 +279,10 @@ class EmuladorASM:
                 elif op == "CALL":
                     destino = ops[0]
                     if destino in etiquetas:          # función del usuario
+                        if self.profundidad >= EmuladorTAC.LIMITE_LLAMADAS:
+                            raise ErrorEjecucion(f"Stack Overflow: más de {EmuladorTAC.LIMITE_LLAMADAS} llamadas "
+                                                 f"anidadas (¿recursión infinita en '{destino[3:]}'?)")
+                        self.profundidad += 1
                         self._push(pc)                # dirección de retorno
                         pc = etiquetas[destino]
                     elif destino == "liberar":
@@ -294,6 +299,7 @@ class EmuladorASM:
                     else:
                         raise ErrorEjecucion(f"Rutina desconocida {destino}")
                 elif op == "RET":
+                    self.profundidad -= 1
                     pc = self._pop()
                 else:
                     raise ErrorEjecucion(f"Instrucción desconocida {op}")

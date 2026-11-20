@@ -44,7 +44,8 @@ class PruebasIntegracion(unittest.TestCase):
         self.assertNotIn("Traceback", salida)
 
     def test_ejemplos_de_errores(self):
-        for nombre, fase in (("error_lexico", LEXICO), ("error_sintactico", SINTACTICO), ("error_semantico", SEMANTICO)):
+        for nombre, fase in (("error_lexico", LEXICO), ("error_sintactico", SINTACTICO),
+                             ("error_semantico", SEMANTICO), ("error_funciones", SEMANTICO)):
             reporte = frente((EJEMPLOS / "errores" / f"{nombre}.drg").read_text(encoding="utf-8")).reporte
             self.assertTrue(reporte.errores, nombre)
             self.assertTrue(all(e.fase == fase for e in reporte.errores), nombre)
@@ -70,6 +71,19 @@ class PruebasIntegracion(unittest.TestCase):
         codigo, salida = ejecutar_main("README.md")
         self.assertEqual(codigo, 1)
         self.assertIn(".drg", salida)
+
+    def test_errores_en_tiempo_de_ejecucion(self):
+        for nombre, mensaje in (("error_memoria", "dangling pointer"), ("error_recursion", "Stack Overflow")):
+            codigo, salida = ejecutar_main(str(EJEMPLOS / "errores" / f"{nombre}.drg"), "--fases", "7")
+            self.assertEqual(codigo, 2)  # compila, pero falla al ejecutarse
+            self.assertIn(mensaje, salida)
+            self.assertIn("la semántica se preservó", salida)
+
+    def test_opciones_nuevas(self):
+        for opciones in (["--interpretar"], ["--automatas", "--fases", "1"], ["--asignador", "coloreo"]):
+            codigo, salida = ejecutar_main(str(EJEMPLOS / "programa_correcto.drg"), *opciones)
+            self.assertEqual(codigo, 0, opciones)
+            self.assertNotIn("Traceback", salida)
 
     def test_archivo_inexistente(self):
         codigo, salida = ejecutar_main("no_existe.drg")

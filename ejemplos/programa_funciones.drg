@@ -1,0 +1,65 @@
+// ================================================================
+//  programa_funciones.drg — Funciones, recursión y marcos de pila
+//  Cada llamada crea un marco nuevo en la pila (Semana 8):
+//      python main.py ejemplos/programa_funciones.drg --fases 6
+// ================================================================
+
+entero llamadas = 0;    // global: las funciones también la ven
+
+// Recursión: cada llamada tiene su propio 'n' en su propio marco
+funcion entero factorial(entero n) {
+    llamadas = llamadas + 1;
+    si (n <= 1) {
+        retornar 1;
+    }
+    retornar n * factorial(n - 1);
+}
+
+funcion entero fibonacci(entero n) {
+    si (n < 2) {
+        retornar n;
+    }
+    retornar fibonacci(n - 1) + fibonacci(n - 2);
+}
+
+// Algoritmo de Euclides con el operador %
+funcion entero mcd(entero a, entero b) {
+    mientras (b != 0) {
+        entero resto = a % b;
+        a = b;
+        b = resto;
+    }
+    retornar a;
+}
+
+funcion booleano es_primo(entero n) {
+    si (n < 2) { retornar falso; }
+    entero divisor = 2;
+    mientras (divisor * divisor <= n) {
+        si (n % divisor == 0) { retornar falso; }
+        divisor = divisor + 1;
+    }
+    retornar verdadero;
+}
+
+// Un real como parámetro; el entero del argumento se convierte solo
+funcion real area_circulo(real radio) {
+    retornar 3.14159 * radio * radio;
+}
+
+// Procedimiento (vacio): no retorna valor
+funcion vacio anunciar(texto quien, entero puntos) {
+    texto mensaje = quien + " obtiene puntos:";
+    imprimir(mensaje);
+    imprimir(puntos);
+    liberar(mensaje);
+}
+
+imprimir(factorial(6));
+imprimir(llamadas);
+imprimir(fibonacci(12));
+imprimir(mcd(84, 36));
+imprimir(es_primo(97));
+imprimir(es_primo(91));
+imprimir(area_circulo(2));
+anunciar("Aria", factorial(3) + mcd(10, 4));

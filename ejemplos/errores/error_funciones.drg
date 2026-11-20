@@ -1,0 +1,19 @@
+// Errores SEMÁNTICOS con funciones (Semana 6): todo está bien escrito,
+// pero las llamadas no respetan las firmas.
+funcion entero doble(entero x) {
+    retornar x * 2;
+}
+funcion vacio saludar(texto nombre) {
+    imprimir(nombre);
+}
+funcion real promedio(entero a, entero b) {
+    imprimir(a + b);                  // falta 'retornar': no devuelve nada
+}
+imprimir(doble(1, 2));                // espera 1 argumento, recibe 2
+imprimir(doble("hola"));              // argumento de tipo incorrecto
+entero x = saludar("Aria");           // 'saludar' es vacio: no devuelve valor
+imprimir(triple(3));                  // función no declarada
+retornar 5;                           // 'retornar' fuera de una función
+funcion texto nombre() {
+    retornar 42;                      // tipo de retorno incorrecto
+}
