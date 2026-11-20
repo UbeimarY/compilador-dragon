@@ -9,6 +9,7 @@ Uso (cualquiera de las tres formas):
 Opciones:
     --registros N     Número de registros físicos de la CPU simulada (por defecto 3, mínimo 2)
     --sin-optimizar   Genera el ensamblador directamente desde el TAC sin optimizar
+    --automatas       Muestra los autómatas del lexer: RegEx → NFA → DFA → DFA mínimo
     --fases 1,4,6     Muestra solo las fases indicadas (1 a 7)
     --sin-color       Desactiva los colores de la consola
     --salida DIR      Carpeta donde se guardan los archivos .tac y .asm (por defecto: salida/)
@@ -28,6 +29,7 @@ import traceback
 from pathlib import Path
 
 from .ast_nodos import arbol_ascii
+from .automatas import construir_automatas, verificar_tokens
 from .codegen import generar_codigo
 from .emulador import EmuladorASM, EmuladorTAC
 from .errores import LEXICO, SEMANTICO, SINTACTICO, ReporteErrores
@@ -81,6 +83,35 @@ def escribir_salida(carpeta: str, nombre: str, contenido: str) -> None:
         archivo.write(contenido)
 
 
+def mostrar_automatas(tokens) -> None:
+    a = construir_automatas()
+    titulo(None, "AUTÓMATAS DEL LEXER (Semana 2): RegEx → NFA → DFA → DFA mínimo")
+    subtitulo("1. Expresiones regulares (L = letra o _, D = dígito, . = punto)")
+    for token, regex, _, _ in a.detalle:
+        print(f"  {token:<8} {regex}")
+    subtitulo("2. NFA por construcción de Thompson")
+    for token, regex, estados, final in a.detalle:
+        print(f"  {token:<8} {estados:>2} estados nuevos · estado de aceptación q{final}")
+    print(f"  NFA combinado: {a.nfa.total} estados y {a.nfa.num_aristas()} transiciones "
+          f"(q0 se une a los tres con ε)")
+    subtitulo("3. DFA por construcción de subconjuntos")
+    for nombre in a.dfa.estados:
+        print(f"  {nombre} = ε-cerradura {{{', '.join(f'q{e}' for e in sorted(a.dfa.composicion[nombre]))}}}")
+    print()
+    print(a.dfa.matriz())
+    subtitulo("4. Minimización de Hopcroft (∅ = estado muerto)")
+    for paso in a.traza:
+        print(f"  {paso}")
+    print(f"\n  {len(a.dfa.estados)} estados → {len(a.minimo.estados)} estados en el DFA mínimo\n")
+    print(a.minimo.matriz())
+    subtitulo("5. Verificación: cada número e identificador del programa pasa por el DFA mínimo")
+    revisados, diferencias = verificar_tokens(a.minimo, tokens)
+    for d in diferencias:
+        print(Color.error(f"  {d}"))
+    if not diferencias:
+        print(Color.ok(f"  ✓ {revisados} lexemas: el DFA mínimo los clasifica igual que el lexer"))
+
+
 def compilar(ruta: Path, carpeta_salida: str, args: argparse.Namespace) -> int:
     fases = set(range(1, 8)) if not args.fases else {int(f) for f in args.fases.split(",")}
     ver = lambda n: n in fases
@@ -100,6 +131,8 @@ def compilar(ruta: Path, carpeta_salida: str, args: argparse.Namespace) -> int:
         for t in tokens[:-1]:
             print(f"{t.linea:<7}{t.columna:<6}{t.tipo:<14}{t.lexema}")
         print(Color.tenue(f"\nTotal: {len(tokens) - 1} tokens · errores léxicos: {len(reporte.de_fase(LEXICO))}"))
+    if args.automatas:
+        mostrar_automatas(tokens)
 
     # ------------------------------------------------------------ FASE 2
     ast = Parser(tokens, reporte).parsear()
@@ -219,6 +252,8 @@ def compilar(ruta: Path, carpeta_salida: str, args: argparse.Namespace) -> int:
     escribir_salida(carpeta_salida, f"{ruta.stem}.tac", tac.como_texto() + "\n")
     escribir_salida(carpeta_salida, f"{ruta.stem}.opt.tac", tac_optimizado.como_texto() + "\n")
     escribir_salida(carpeta_salida, f"{ruta.stem}.asm", codigo.como_texto() + "\n")
+    if args.automatas:
+        escribir_salida(carpeta_salida, "automata_lexer.dot", construir_automatas().minimo.dot("DFA mínimo") + "\n")
     carpeta = os.path.relpath(carpeta_salida)
     print(Color.ok(f"\n  Compilación exitosa. Archivos generados en {carpeta}/: "
                    f"{ruta.stem}.tac, {ruta.stem}.opt.tac, {ruta.stem}.asm"))
@@ -232,6 +267,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("archivo", help="programa fuente .drg")
     parser.add_argument("--registros", type=int, default=3, help="registros físicos disponibles (mínimo 2)")
     parser.add_argument("--sin-optimizar", action="store_true", help="no optimizar antes de generar ensamblador")
+    parser.add_argument("--automatas", action="store_true", help="mostrar los autómatas del lexer (NFA, DFA, DFA mínimo)")
     parser.add_argument("--fases", help="fases a mostrar, separadas por comas (1-7)")
     parser.add_argument("--sin-color", action="store_true", help="desactiva colores ANSI")
     parser.add_argument("--salida", default="salida", help="carpeta para los archivos generados")
