@@ -35,7 +35,8 @@ jobs:
           set -u
           esperar() {  # esperar <código esperado> <archivo> [opciones...]
             esperado=$1; shift
-            python main.py "$@" --sin-color > salida.txt; codigo=$?
+            codigo=0
+            python main.py "$@" --sin-color > salida.txt || codigo=$?
             tail -n 2 salida.txt
             if [ "$codigo" -ne "$esperado" ]; then
               echo "::error::$* terminó con código $codigo (se esperaba $esperado)"; exit 1
