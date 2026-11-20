@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dragon Playground — Compilador en el navegador</title>
+<meta name="description" content="Escriba código Dragon y vea cada fase del compilador: tokens, AST, tabla de símbolos, TAC, optimización, ensamblador y ejecución.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐉</text></svg>">
+<style>
+  :root {
+    --fondo: #0f1115;
+    --panel: #161a21;
+    --panel-2: #1c2129;
+    --borde: #2a313c;
+    --texto: #d7dce4;
+    --tenue: #8a94a3;
+    --brasa: #ff7a3d;
+    --brasa-2: #ffb347;
+    --ok: #4fd18b;
+    --error: #ff5d6c;
+    --aviso: #f5c451;
+    --azul: #6cb6ff;
+    --mono: "JetBrains Mono", "Cascadia Code", "Fira Code", Consolas, "Courier New", monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--fondo); color: var(--texto); font-family: var(--sans);
+    display: grid; grid-template-rows: auto 1fr auto; min-height: 100vh;
+  }
+  header {
+    display: flex; align-items: center; gap: 14px; padding: 12px 20px;
+    border-bottom: 1px solid var(--borde); background: linear-gradient(90deg, #1a1210, var(--fondo) 45%);
+  }
+  header h1 { font-size: 18px; margin: 0; letter-spacing: .3px; }
+  header h1 span { color: var(--brasa); }
+  header .lema { color: var(--tenue); font-size: 13px; }
+  header nav { margin-left: auto; display: flex; gap: 14px; font-size: 13px; }
+  a { color: var(--azul); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  main { display: grid; grid-template-columns: minmax(340px, 5fr) 7fr; gap: 0; min-height: 0; }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+
+  .columna { display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--borde); }
+  .barra {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 10px 14px;
+    background: var(--panel); border-bottom: 1px solid var(--borde); font-size: 13px;
+  }
+  .barra label { color: var(--tenue); display: flex; align-items: center; gap: 6px; }
+  select, button {
+    font: inherit; color: var(--texto); background: var(--panel-2);
+    border: 1px solid var(--borde); border-radius: 6px; padding: 6px 9px;
+  }
+  button.compilar {
+    margin-left: auto; background: var(--brasa); color: #1a0d05; border-color: var(--brasa);
+    font-weight: 700; padding: 7px 16px; cursor: pointer;
+  }
+  button.compilar:hover:not(:disabled) { background: var(--brasa-2); }
+  button:disabled { opacity: .5; cursor: wait; }
+  .atajo { color: var(--tenue); font-size: 11px; }
+
+  .editor { position: relative; flex: 1; display: flex; min-height: 420px; background: var(--fondo); }
+  .gutter {
+    padding: 14px 8px 14px 10px; text-align: right; color: #4b5563; user-select: none;
+    font: 13px/1.6 var(--mono); background: var(--panel); border-right: 1px solid var(--borde);
+    overflow: hidden; min-width: 46px;
+  }
+  .gutter div.err { color: #fff; background: var(--error); border-radius: 3px; cursor: help; }
+  .gutter div.adv { color: #1a1300; background: var(--aviso); border-radius: 3px; cursor: help; }
+  textarea {
+    flex: 1; resize: none; border: 0; outline: 0; padding: 14px; margin: 0;
+    background: transparent; color: var(--texto); font: 13px/1.6 var(--mono);
+    tab-size: 4; white-space: pre; overflow: auto;
+  }
+
+  .salida { display: flex; flex-direction: column; min-height: 0; }
+  .pestanas {
+    display: flex; overflow-x: auto; background: var(--panel); border-bottom: 1px solid var(--borde);
+  }
+  .pestanas button {
+    border: 0; border-radius: 0; background: transparent; color: var(--tenue);
+    padding: 11px 14px; white-space: nowrap; cursor: pointer; border-bottom: 2px solid transparent;
+    font-size: 13px;
+  }
+  .pestanas button .n { color: #5b6573; margin-right: 4px; font-family: var(--mono); }
+  .pestanas button:hover:not(:disabled) { color: var(--texto); }
+  .pestanas button.activa { color: var(--texto); border-bottom-color: var(--brasa); }
+  .pestanas button.errores { color: var(--error); }
+  .pestanas button:disabled { cursor: not-allowed; opacity: .35; }
+
+  .estado {
+    display: flex; align-items: center; gap: 10px; padding: 9px 14px; font-size: 13px;
+    border-bottom: 1px solid var(--borde); background: var(--panel-2); min-height: 38px;
+  }
+  .estado .punto { width: 9px; height: 9px; border-radius: 50%; background: var(--tenue); flex: none; }
+  .estado.ok .punto { background: var(--ok); }
+  .estado.mal .punto { background: var(--error); }
+  .estado.cargando .punto { background: var(--aviso); animation: latir 1s infinite; }
+  @keyframes latir { 50% { opacity: .3; } }
+  .estado .metricas { margin-left: auto; color: var(--tenue); font-family: var(--mono); font-size: 12px; }
+
+  pre#vista {
+    flex: 1; margin: 0; padding: 16px 18px; overflow: auto; font: 12.5px/1.55 var(--mono);
+    white-space: pre; color: var(--texto); min-height: 420px;
+  }
+  .e { color: var(--error); } .w { color: var(--aviso); } .k { color: var(--ok); }
+  .s { color: var(--brasa); font-weight: 600; } .d { color: var(--tenue); } .t { color: var(--azul); }
+
+  footer {
+    padding: 10px 20px; border-top: 1px solid var(--borde); color: var(--tenue); font-size: 12px;
+    display: flex; flex-wrap: wrap; gap: 6px 18px;
+  }
+  footer code { font-family: var(--mono); color: var(--texto); }
+</style>
+</head>
+<body>
+<header>
+  <h1>🐉 <span>Dragon</span> Playground</h1>
+  <div class="lema">El compilador completo, ejecutándose en su navegador</div>
+  <nav>
+    <a href="https://github.com/UbeimarY/compilador-dragon" target="_blank" rel="noopener">Repositorio</a>
+    <a href="https://github.com/UbeimarY/compilador-dragon#2-el-lenguaje-dragon" target="_blank" rel="noopener">Referencia del lenguaje</a>
+  </nav>
+</header>
+
+<main>
+  <section class="columna">
+    <div class="barra">
+      <label>Ejemplo
+        <select id="ejemplo">
+          <option value="ejemplos/programa_correcto.drg">Combate contra el dragón</option>
+          <option value="ejemplos/programa_estres.drg">Estrés: 16 errores</option>
+          <option value="ejemplos/programa_registros.drg">Presión de registros (spill)</option>
+          <option value="ejemplos/errores/error_lexico.drg">Errores léxicos</option>
+          <option value="ejemplos/errores/error_sintactico.drg">Errores sintácticos</option>
+          <option value="ejemplos/errores/error_semantico.drg">Errores semánticos</option>
+        </select>
+      </label>
+      <label>Registros
+        <select id="registros">
+          <option>2</option><option selected>3</option><option>4</option><option>6</option><option>8</option>
+        </select>
+      </label>
+      <label><input type="checkbox" id="optimizar" checked> Optimizar</label>
+      <button class="compilar" id="compilar" disabled>Compilar ▶</button>
+    </div>
+    <div class="editor">
+      <div class="gutter" id="gutter"></div>
+      <textarea id="codigo" spellcheck="false" autocomplete="off" autocapitalize="off"
+                aria-label="Código fuente Dragon"></textarea>
+    </div>
+  </section>
+
+  <section class="salida">
+    <div class="pestanas" id="pestanas" role="tablist"></div>
+    <div class="estado cargando" id="estado">
+      <span class="punto"></span><span id="estado-texto">Cargando Python en el navegador (Pyodide)…</span>
+      <span class="metricas" id="metricas"></span>
+    </div>
+    <pre id="vista" aria-live="polite"></pre>
+  </section>
+</main>
+
+<footer>
+  <span>Atajo: <code>Ctrl</code> + <code>Enter</code> compila</span>
+  <span>Todo se ejecuta localmente con <a href="https://pyodide.org" target="_blank" rel="noopener">Pyodide</a>: el código no se envía a ningún servidor.</span>
+  <span>Proyecto final · Compiladores · Universidad Cooperativa de Colombia</span>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js"></script>
+<script>
+const MODULOS = ["__init__", "ast_nodos", "cli", "codegen", "emulador", "errores", "lexer",
+                 "optimizador", "parser", "semantico", "tac", "utilidades"];
+const FASES = [
+  ["1", "Tokens"], ["2", "AST"], ["3", "Semántico"], ["4", "TAC"],
+  ["5", "Optimización"], ["6", "Ensamblador"], ["7", "Ejecución"], ["errores", "Errores"],
+];
+
+const $ = (id) => document.getElementById(id);
+const codigo = $("codigo"), gutter = $("gutter"), vista = $("vista");
+let pyodide = null, secciones = {}, activa = "7";
+
+// ------------------------------------------------------------ editor
+function actualizarGutter(marcas = {}) {
+  const n = codigo.value.split("\n").length;
+  let html = "";
+  for (let i = 1; i <= n; i++) {
+    const m = marcas[i];
+    html += m ? `<div class="${m.clase}" title="${escapar(m.texto)}">${i}</div>` : `<div>${i}</div>`;
+  }
+  gutter.innerHTML = html;
+  gutter.scrollTop = codigo.scrollTop;
+}
+codigo.addEventListener("input", () => actualizarGutter());
+codigo.addEventListener("scroll", () => { gutter.scrollTop = codigo.scrollTop; });
+codigo.addEventListener("keydown", (e) => {
+  if (e.key === "Tab") {
+    e.preventDefault();
+    const { selectionStart: a, selectionEnd: b } = codigo;
+    codigo.setRangeText("    ", a, b, "end");
+    actualizarGutter();
+  }
+  if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); compilar(); }
+});
+
+// ------------------------------------------------------------ pestañas
+function dibujarPestanas(hayErrores, exito) {
+  const cont = $("pestanas");
+  cont.innerHTML = "";
+  for (const [clave, nombre] of FASES) {
+    if (clave === "errores" && !hayErrores) continue;
+    const b = document.createElement("button");
+    b.setAttribute("role", "tab");
+    b.innerHTML = clave === "errores" ? `⚠ ${nombre}` : `<span class="n">${clave}</span>${nombre}`;
+    if (clave === "errores") b.classList.add("errores");
+    if (!(clave in secciones)) b.disabled = true;
+    if (clave === activa) b.classList.add("activa");
+    b.onclick = () => { activa = clave; dibujarPestanas(hayErrores, exito); mostrar(); };
+    cont.appendChild(b);
+  }
+}
+
+function escapar(t) {
+  return t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+function resaltar(texto) {
+  return escapar(texto).split("\n").map((l) => {
+    if (/^\[(LÉXICO|SINTÁCTICO|SEMÁNTICO)\]/.test(l) || l.includes("✗") || l.startsWith("Compilación detenida")) return `<span class="e">${l}</span>`;
+    if (l.startsWith("[ADVERTENCIA]")) return `<span class="w">${l}</span>`;
+    if (l.includes("✓") || l.includes("Compilación exitosa")) return `<span class="k">${l}</span>`;
+    if (l.includes("SPILL") || l.includes("RECARGA")) return `<span class="w">${l}</span>`;
+    if (/^── /.test(l)) return `<span class="s">${l}</span>`;
+    if (/^\s*&gt; /.test(l)) return `<span class="k">${l}</span>`;
+    if (/^\s+\d+ \| |^\s+\| /.test(l)) return `<span class="d">${l}</span>`;
+    if (/^L\d+:$/.test(l.trim()) || /^\d{3} L\d+:/.test(l)) return `<span class="t">${l}</span>`;
+    return l;
+  }).join("\n");
+}
+
+function mostrar() {
+  vista.innerHTML = resaltar(secciones[activa] ?? "");
+  vista.scrollTop = 0;
+}
+
+function estado(clase, texto, metricas = "") {
+  $("estado").className = "estado " + clase;
+  $("estado-texto").textContent = texto;
+  $("metricas").textContent = metricas;
+}
+
+// ------------------------------------------------------------ compilación
+const PY_COMPILAR = `
+import io, contextlib, re, json
+from dragon.cli import main as _main
+
+def _compilar(codigo, registros, optimizar):
+    with open("programa.drg", "w", encoding="utf-8") as f:
+        f.write(codigo)
+    args = ["programa.drg", "--sin-color", "--registros", str(registros)]
+    if not optimizar:
+        args.append("--sin-optimizar")
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        codigo_salida = _main(args)
+    texto = buf.getvalue()
+
+    # Separar la salida por fases usando los títulos enmarcados con ═══
+    secciones, clave, actual = {}, None, []
+    lineas = texto.splitlines()
+    i = 0
+    while i < len(lineas):
+        l = lineas[i]
+        if l.startswith("═") and i + 2 < len(lineas) and lineas[i + 2].startswith("═"):
+            titulo = lineas[i + 1]
+            m = re.search(r"FASE (\\d)", titulo)
+            if clave is not None:
+                secciones[clave] = "\\n".join(actual).strip("\\n")
+            clave = m.group(1) if m else ("errores" if "ERRORES" in titulo else titulo.strip())
+            actual = [titulo.strip(), ""]
+            i += 3
+            continue
+        if clave is not None:
+            actual.append(l)
+        i += 1
+    if clave is not None:
+        secciones[clave] = "\\n".join(actual).strip("\\n")
+
+    errores = re.findall(r"^\\[(LÉXICO|SINTÁCTICO|SEMÁNTICO|ADVERTENCIA)\\] L:(\\d+) C:(\\d+) — (.*)$", texto, re.M)
+    return json.dumps({"codigo": codigo_salida, "secciones": secciones, "errores": errores, "texto": texto})
+`;
+
+async function iniciar() {
+  try {
+    pyodide = await loadPyodide();
+    estado("cargando", "Cargando el compilador Dragon…");
+    pyodide.FS.mkdirTree("/home/pyodide/dragon");
+    await Promise.all(MODULOS.map(async (m) => {
+      const r = await fetch(`dragon/${m}.py`);
+      if (!r.ok) throw new Error(`No se pudo cargar dragon/${m}.py`);
+      pyodide.FS.writeFile(`/home/pyodide/dragon/${m}.py`, await r.text());
+    }));
+    pyodide.runPython(`import os, sys\nos.chdir("/home/pyodide")\nsys.path.insert(0, "/home/pyodide")`);
+    pyodide.runPython(PY_COMPILAR);
+    await cargarEjemplo();
+    $("compilar").disabled = false;
+    compilar();
+  } catch (err) {
+    estado("mal", "No se pudo iniciar el playground: " + err.message);
+  }
+}
+
+async function cargarEjemplo() {
+  const r = await fetch($("ejemplo").value);
+  codigo.value = r.ok ? await r.text() : "// No se pudo cargar el ejemplo";
+  actualizarGutter();
+}
+$("ejemplo").addEventListener("change", async () => { await cargarEjemplo(); if (pyodide) compilar(); });
+$("registros").addEventListener("change", () => pyodide && compilar());
+$("optimizar").addEventListener("change", () => pyodide && compilar());
+$("compilar").addEventListener("click", () => compilar());
+
+function compilar() {
+  if (!pyodide) return;
+  const inicio = performance.now();
+  let r;
+  try {
+    const f = pyodide.globals.get("_compilar");
+    r = JSON.parse(f(codigo.value, Number($("registros").value), $("optimizar").checked));
+    f.destroy();
+  } catch (err) {
+    estado("mal", "Error interno: " + err.message);
+    return;
+  }
+  const ms = Math.round(performance.now() - inicio);
+  secciones = r.secciones;
+
+  const marcas = {};
+  for (const [fase, linea, col, msg] of r.errores) {
+    const esAviso = fase === "ADVERTENCIA";
+    if (marcas[linea] && !esAviso && marcas[linea].clase === "adv") delete marcas[linea];
+    if (!marcas[linea]) marcas[linea] = { clase: esAviso ? "adv" : "err", texto: "" };
+    marcas[linea].texto += `[${fase}] C:${col} — ${msg}\n`;
+  }
+  actualizarGutter(marcas);
+
+  const hayErrores = "errores" in secciones;
+  if (hayErrores) {
+    activa = "errores";
+    const m = r.texto.match(/Compilación detenida: (\d+) error/);
+    estado("mal", `${m ? m[1] : "Hay"} error(es): no se genera código`, `${ms} ms`);
+  } else {
+    if (!(activa in secciones) || activa === "errores") activa = "7";
+    const reduccion = r.texto.match(/Instrucciones TAC: (\d+) → (\d+)/);
+    const spills = r.texto.match(/(\d+) spill\(s\)/);
+    const preservada = r.texto.includes("la semántica se preservó");
+    const partes = [];
+    if (reduccion) partes.push(`TAC ${reduccion[1]}→${reduccion[2]}`);
+    partes.push(`${spills ? spills[1] : 0} spills`);
+    partes.push(`${ms} ms`);
+    estado(preservada ? "ok" : "mal",
+           preservada ? "Compilación exitosa · semántica preservada" : "Compilado, pero las ejecuciones difieren",
+           partes.join(" · "));
+  }
+  dibujarPestanas(hayErrores, !hayErrores);
+  mostrar();
+}
+
+actualizarGutter();
+dibujarPestanas(false, false);
+iniciar();
+</script>
+</body>
+</html>
