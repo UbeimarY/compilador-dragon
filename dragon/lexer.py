@@ -35,6 +35,10 @@ PALABRAS_RESERVADAS = {
     "imprimir": "IMPRIMIR",
     "verdadero": "BOOLEANO",
     "falso": "BOOLEANO",
+    "funcion": "FUNCION",
+    "retornar": "RETORNAR",
+    "vacio": "VACIO",
+    "liberar": "LIBERAR",
 }
 
 OPERADORES = {

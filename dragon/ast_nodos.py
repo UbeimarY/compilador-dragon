@@ -80,6 +80,48 @@ class Imprimir(Nodo):
     columna: int
 
 
+@dataclass
+class Parametro(Nodo):
+    tipo: str
+    nombre: str
+    linea: int
+    columna: int
+    nombre_unico: Optional[str] = field(default=None, repr=False)
+
+
+@dataclass
+class Funcion(Nodo):
+    tipo_retorno: str          # entero | real | texto | booleano | vacio
+    nombre: str
+    parametros: list[Parametro]
+    cuerpo: Bloque
+    linea: int
+    columna: int
+
+
+@dataclass
+class Retornar(Nodo):
+    valor: Optional[Expresion]
+    linea: int
+    columna: int
+
+
+@dataclass
+class Liberar(Nodo):
+    """liberar(variable): devuelve al heap la memoria de un texto (free)."""
+    variable: "Variable"
+    linea: int
+    columna: int
+
+
+@dataclass
+class InstruccionExpresion(Nodo):
+    """Una llamada usada como instrucción: saludar("Aria");"""
+    expresion: Expresion
+    linea: int
+    columna: int
+
+
 # ------------------------------------------------------------------ Expresiones
 @dataclass
 class Literal(Expresion):
@@ -118,6 +160,15 @@ class Unaria(Expresion):
 
 
 @dataclass
+class Llamada(Expresion):
+    nombre: str
+    argumentos: list[Expresion]
+    linea: int
+    columna: int
+    tipo: Optional[str] = None
+
+
+@dataclass
 class Conversion(Expresion):
     """Coerción implícita insertada por el analizador semántico (entero → real)."""
     expresion: Expresion
@@ -131,6 +182,17 @@ def _etiqueta(n: Nodo) -> str:
     t = f" : {n.tipo}" if isinstance(n, Expresion) and getattr(n, "tipo", None) else ""
     if isinstance(n, Programa):
         return "Programa"
+    if isinstance(n, Funcion):
+        params = ", ".join(f"{p.tipo} {p.nombre}" for p in n.parametros)
+        return f"Función {n.tipo_retorno} {n.nombre}({params})"
+    if isinstance(n, Retornar):
+        return "Retornar"
+    if isinstance(n, Liberar):
+        return f"Liberar {n.variable.nombre}"
+    if isinstance(n, InstruccionExpresion):
+        return "Instrucción"
+    if isinstance(n, Llamada):
+        return f"Llamada {n.nombre}(){t}"
     if isinstance(n, Bloque):
         return "Bloque { }"
     if isinstance(n, Declaracion):
@@ -161,6 +223,16 @@ def _etiqueta(n: Nodo) -> str:
 def _hijos(n: Nodo) -> list[tuple[str, Nodo]]:
     if isinstance(n, (Programa, Bloque)):
         return [("", i) for i in n.instrucciones]
+    if isinstance(n, Funcion):
+        return [("cuerpo: ", n.cuerpo)]
+    if isinstance(n, Retornar):
+        return [("", n.valor)] if n.valor else []
+    if isinstance(n, Liberar):
+        return []
+    if isinstance(n, InstruccionExpresion):
+        return [("", n.expresion)]
+    if isinstance(n, Llamada):
+        return [(f"arg {i + 1}: ", a) for i, a in enumerate(n.argumentos)]
     if isinstance(n, Declaracion):
         return [("valor: ", n.valor)] if n.valor else []
     if isinstance(n, Asignacion):

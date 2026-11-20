@@ -6,8 +6,14 @@ Parser descendente recursivo (Top-Down, Semanas 3 y 4): cada regla de la
 gramática es un método. La gramática no tiene recursión izquierda y codifica
 la precedencia de operadores por niveles (de menor a mayor):
 
-    programa     → instruccion* EOF
+    programa     → ( funcion | instruccion )* EOF
+    funcion      → 'funcion' ( TIPO | 'vacio' ) ID '(' [ parametro { ',' parametro } ] ')' bloque
+    parametro    → TIPO ID
     instruccion  → declaracion | asignacion | si | mientras | imprimir | bloque
+                 | retornar | liberar | llamada ';'
+    retornar     → 'retornar' [ expresion ] ';'
+    liberar      → 'liberar' '(' ID ')' ';'
+    llamada      → ID '(' [ expresion { ',' expresion } ] ')'
     declaracion  → TIPO ID ( '=' expresion )? ';'
     asignacion   → ID '=' expresion ';'
     si           → 'si' '(' expresion ')' bloque ( 'sino' ( si | bloque ) )?
@@ -23,7 +29,7 @@ la precedencia de operadores por niveles (de menor a mayor):
     aditiva      → multiplicativa ( ( '+' | '-' ) multiplicativa )*
     multiplicativa → unaria ( ( '*' | '/' | '%' ) unaria )*
     unaria       → ( '-' | '!' ) unaria | primaria
-    primaria     → NUM_ENTERO | NUM_REAL | CADENA | BOOLEANO | ID | '(' expresion ')'
+    primaria     → NUM_ENTERO | NUM_REAL | CADENA | BOOLEANO | llamada | ID | '(' expresion ')'
 
 Recuperación de errores en MODO PÁNICO: cuando una instrucción está mal
 formada se registra el error y se descartan tokens hasta un punto seguro
@@ -32,8 +38,9 @@ puede reportar varios errores sintácticos en una sola compilación.
 """
 
 from .ast_nodos import (Asignacion, Binaria, Bloque, Declaracion, Expresion,
-                        Imprimir, Literal, Mientras, Nodo, Programa, Si,
-                        Unaria, Variable)
+                        Funcion, Imprimir, InstruccionExpresion, Liberar,
+                        Literal, Llamada, Mientras, Nodo, Parametro, Programa,
+                        Retornar, Si, Unaria, Variable)
 from .errores import LEXICO, SINTACTICO, ReporteErrores
 from .lexer import Token
 
@@ -43,7 +50,8 @@ NOMBRES_LEGIBLES = {
     "ID": "un identificador", "EOF": "el fin del archivo", "TIPO": "un tipo",
 }
 
-INICIO_INSTRUCCION = {"TIPO", "ID", "SI", "MIENTRAS", "IMPRIMIR", "LLAVE_IZQ"}
+INICIO_INSTRUCCION = {"TIPO", "ID", "SI", "MIENTRAS", "IMPRIMIR", "LLAVE_IZQ",
+                      "FUNCION", "RETORNAR", "LIBERAR"}
 
 NIVELES_BINARIOS = [
     {"O": "||"},
@@ -90,6 +98,9 @@ class Parser:
             self.pos += 1
         return token
 
+    def _siguiente_es(self, tipo: str) -> bool:
+        return self.pos + 1 < len(self.tokens) and self.tokens[self.pos + 1].tipo == tipo
+
     def _es(self, *tipos: str) -> bool:
         return self.actual.tipo in tipos
 
@@ -134,10 +145,48 @@ class Parser:
                 self._error("Llave '}' de cierre sin su '{' de apertura")
                 self._avanzar()
                 continue
-            instr = self._instruccion_segura()
+            if self._es("FUNCION"):
+                instr = self._funcion_segura()
+            else:
+                instr = self._instruccion_segura()
             if instr is not None:
                 instrucciones.append(instr)
         return Programa(instrucciones)
+
+    # -------------------------------------------------------------- funciones
+    def _funcion_segura(self) -> Funcion | None:
+        posicion_inicial = self.pos
+        try:
+            return self._funcion()
+        except ErrorSintactico:
+            self._sincronizar()
+            if self.pos == posicion_inicial and not self._es("LLAVE_DER"):
+                self._avanzar()
+            return None
+
+    def _funcion(self) -> Funcion:
+        inicio = self._avanzar()  # 'funcion'
+        if not self._es("TIPO", "VACIO"):
+            raise self._error(f"Se esperaba el tipo de retorno (o 'vacio') después de 'funcion', "
+                              f"pero se encontró {_describir(self.actual)}")
+        tipo_retorno = self._avanzar().lexema
+        nombre = self._consumir("ID", "como nombre de la función")
+        self._consumir("PAR_IZQ", f"después del nombre de la función '{nombre.lexema}'")
+        parametros: list[Parametro] = []
+        if not self._es("PAR_DER"):
+            while True:
+                if not self._es("TIPO"):
+                    raise self._error(f"Se esperaba el tipo de un parámetro de '{nombre.lexema}', "
+                                      f"pero se encontró {_describir(self.actual)}")
+                tipo = self._avanzar()
+                id_param = self._consumir("ID", f"después del tipo '{tipo.lexema}' del parámetro")
+                parametros.append(Parametro(tipo.lexema, id_param.lexema, tipo.linea, tipo.columna))
+                if not self._es("COMA"):
+                    break
+                self._avanzar()
+        self._consumir("PAR_DER", f"para cerrar los parámetros de '{nombre.lexema}'")
+        cuerpo = self._bloque(f"funcion {nombre.lexema}")
+        return Funcion(tipo_retorno, nombre.lexema, parametros, cuerpo, inicio.linea, inicio.columna)
 
     def _instruccion_segura(self) -> Nodo | None:
         posicion_inicial = self.pos
@@ -152,8 +201,29 @@ class Parser:
     def _instruccion(self) -> Nodo:
         if self._es("TIPO"):
             return self._declaracion()
+        if self._es("ID") and self._siguiente_es("PAR_IZQ"):
+            llamada = self._primaria()
+            self._consumir("PUNTO_COMA", f"después de la llamada a '{llamada.nombre}'")
+            return InstruccionExpresion(llamada, llamada.linea, llamada.columna)
         if self._es("ID"):
             return self._asignacion()
+        if self._es("RETORNAR"):
+            tok = self._avanzar()
+            valor = None if self._es("PUNTO_COMA") else self._expresion()
+            self._consumir("PUNTO_COMA", "después de 'retornar'")
+            return Retornar(valor, tok.linea, tok.columna)
+        if self._es("LIBERAR"):
+            tok = self._avanzar()
+            self._consumir("PAR_IZQ", "después de 'liberar'")
+            id_tok = self._consumir("ID", "dentro de 'liberar(...)'")
+            self._consumir("PAR_DER", "para cerrar 'liberar('")
+            self._consumir("PUNTO_COMA", "al final de 'liberar(...)'")
+            return Liberar(Variable(id_tok.lexema, id_tok.linea, id_tok.columna), tok.linea, tok.columna)
+        if self._es("FUNCION"):
+            funcion = self._funcion()
+            self._reportar("Las funciones solo pueden declararse en el nivel global, no dentro de un bloque",
+                           funcion.linea, funcion.columna)
+            return funcion
         if self._es("SI"):
             return self._si()
         if self._es("MIENTRAS"):
@@ -262,6 +332,17 @@ class Parser:
         if tok.tipo in literales:
             self._avanzar()
             return Literal(tok.valor, literales[tok.tipo], tok.linea, tok.columna)
+        if tok.tipo == "ID" and self._siguiente_es("PAR_IZQ"):
+            self._avanzar()
+            self._avanzar()  # '('
+            argumentos: list[Expresion] = []
+            if not self._es("PAR_DER"):
+                argumentos.append(self._expresion())
+                while self._es("COMA"):
+                    self._avanzar()
+                    argumentos.append(self._expresion())
+            self._consumir("PAR_DER", f"para cerrar los argumentos de '{tok.lexema}'")
+            return Llamada(tok.lexema, argumentos, tok.linea, tok.columna)
         if tok.tipo == "ID":
             self._avanzar()
             return Variable(tok.lexema, tok.linea, tok.columna)
