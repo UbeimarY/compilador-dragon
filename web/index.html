@@ -230,7 +230,7 @@ function dibujarPestanas(hayErrores, exito) {
     if (clave === "errores" && !hayErrores) continue;
     const b = document.createElement("button");
     b.setAttribute("role", "tab");
-    b.innerHTML = clave === "errores" ? `⚠ ${nombre}` : `<span class="n">${clave}</span>${nombre}`;
+    b.innerHTML = clave === "errores" ? `⚠ ${nombre}` : `<span class="n">${clave === "automatas" ? "1b" : clave}</span>${nombre}`;
     if (clave === "errores") b.classList.add("errores");
     if (!(clave in secciones)) b.disabled = true;
     if (clave === activa) b.classList.add("activa");
