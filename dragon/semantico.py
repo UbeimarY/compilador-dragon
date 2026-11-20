@@ -12,8 +12,15 @@ Recorre el AST validando el *significado* del programa:
    a otra externa, variables sin inicializar y variables nunca usadas.
 
    Cada símbolo recibe un NOMBRE ÚNICO (ej. `x` y `x_1` si hay dos `x` en
-   ámbitos distintos) y una DIRECCIÓN de memoria en el segmento de datos.
+   ámbitos distintos) y una DIRECCIÓN: las variables globales viven en el
+   segmento de datos (0x1000...) y las de una función en su MARCO DE PILA
+   (parámetros en FP+16, FP+24...; variables locales en FP-8, FP-16...).
    Así las fases siguientes ya no necesitan conocer los ámbitos.
+
+   FUNCIONES (Semana 6): se registran todas las firmas en una pasada previa
+   (permite llamar a una función declarada más abajo y la recursión), y se
+   verifica el número y el tipo de los argumentos, el tipo de retorno y que
+   toda función no vacía tenga un 'retornar'.
 
 2. CHEQUEO DE TIPOS (Semana 6)
    Infiere el tipo de cada expresión y verifica la compatibilidad de los
@@ -29,8 +36,9 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from .ast_nodos import (Asignacion, Binaria, Bloque, Conversion, Declaracion,
-                        Expresion, Imprimir, Literal, Mientras, Nodo, Programa,
-                        Si, Unaria, Variable)
+                        Expresion, Funcion, Imprimir, InstruccionExpresion,
+                        Liberar, Literal, Llamada, Mientras, Nodo, Programa,
+                        Retornar, Si, Unaria, Variable)
 from .errores import SEMANTICO, ReporteErrores
 
 ERROR = "error"  # Tipo comodín para no reportar errores en cascada
@@ -53,10 +61,38 @@ class Simbolo:
     direccion: int = 0
     inicializado: bool = False
     usado: bool = False
+    funcion: Optional[str] = None      # None = variable global
+    desplazamiento: int = 0            # posición relativa a FP si es local
+    es_parametro: bool = False
 
     @property
     def tamanio(self) -> int:
         return TAMANIOS[self.tipo]
+
+    @property
+    def es_local(self) -> bool:
+        return self.funcion is not None
+
+    @property
+    def ubicacion(self) -> str:
+        return f"FP{self.desplazamiento:+d}" if self.es_local else "0x%04X" % self.direccion
+
+
+@dataclass
+class InfoFuncion:
+    nombre: str
+    tipo_retorno: str
+    tipos_parametros: list[str]
+    linea: int
+    columna: int
+    parametros: list[str] = field(default_factory=list)   # nombres únicos, en orden
+    locales: list[str] = field(default_factory=list)      # nombres únicos de variables locales
+    tiene_retorno: bool = False
+    usada: bool = False
+
+    @property
+    def firma(self) -> str:
+        return f"{self.tipo_retorno} {self.nombre}({', '.join(self.tipos_parametros)})"
 
 
 @dataclass
@@ -98,14 +134,19 @@ class TablaSimbolos:
             ambito = ambito.padre
         return None
 
-    def definir(self, nombre: str, tipo: str, linea: int, columna: int) -> Simbolo:
-        simbolo = Simbolo(nombre, tipo, self.actual.nombre, self.actual.nivel, linea, columna)
+    def definir(self, nombre: str, tipo: str, linea: int, columna: int,
+                funcion: Optional[str] = None, desplazamiento: int = 0,
+                es_parametro: bool = False) -> Simbolo:
+        simbolo = Simbolo(nombre, tipo, self.actual.nombre, self.actual.nivel, linea, columna,
+                          funcion=funcion, desplazamiento=desplazamiento, es_parametro=es_parametro)
         simbolo.nombre_unico = self._generar_nombre_unico(nombre)
-        simbolo.direccion = self._asignar_direccion(simbolo.tamanio)
+        if funcion is None:
+            simbolo.direccion = self._asignar_direccion(simbolo.tamanio)
         self.actual.simbolos[nombre] = simbolo
         self.todos.append(simbolo)
-        self.eventos.append(f"{'  ' * (self.actual.nivel + 1)}[DECLARA] {tipo} {nombre} "
-                            f"→ {simbolo.nombre_unico} @ 0x{simbolo.direccion:04X}")
+        clase = "parámetro" if es_parametro else tipo
+        self.eventos.append(f"{'  ' * (self.actual.nivel + 1)}[DECLARA] {clase} {nombre} "
+                            f"→ {simbolo.nombre_unico} @ {simbolo.ubicacion}")
         return simbolo
 
     def _generar_nombre_unico(self, nombre: str) -> str:
@@ -125,7 +166,7 @@ class TablaSimbolos:
     def como_texto(self) -> str:
         columnas = ["Nombre", "Interno", "Tipo", "Ámbito", "Nivel", "Línea", "Dirección", "Bytes"]
         datos = [[s.nombre, s.nombre_unico, s.tipo, s.ambito, str(s.nivel), str(s.linea),
-                  "0x%04X" % s.direccion, str(s.tamanio)] for s in self.todos]
+                  s.ubicacion, str(s.tamanio)] for s in self.todos]
         anchos = [max([len(c)] + [len(f[i]) for f in datos]) + 2 for i, c in enumerate(columnas)]
         fila = lambda valores: "".join(v.ljust(a) for v, a in zip(valores, anchos)).rstrip()
         encabezado = fila(columnas)
@@ -137,6 +178,17 @@ class TablaSimbolos:
 class ResultadoSemantico:
     tabla: TablaSimbolos
     coerciones: list[str]
+    funciones: dict[str, InfoFuncion] = field(default_factory=dict)
+
+    def funciones_como_texto(self) -> str:
+        if not self.funciones:
+            return "(el programa no declara funciones)"
+        filas = []
+        for f in self.funciones.values():
+            marco = 8 * len(f.locales)
+            filas.append(f"{f.firma:<40} L:{f.linea:<5} parámetros: {len(f.parametros)} · "
+                         f"locales: {len(f.locales)} ({marco} bytes en el marco)")
+        return "\n".join(filas)
 
 
 class AnalizadorSemantico:
@@ -144,20 +196,125 @@ class AnalizadorSemantico:
         self.reporte = reporte
         self.tabla = TablaSimbolos()
         self.coerciones: list[str] = []
+        self.funciones: dict[str, InfoFuncion] = {}
+        self._funcion_actual: Optional[InfoFuncion] = None
         self._contador_bloques = 0
 
     def analizar(self, programa: Programa) -> ResultadoSemantico:
+        # Pasada previa: registrar todas las firmas (permite recursión y llamar
+        # a funciones declaradas más abajo en el archivo).
         for instr in programa.instrucciones:
+            if isinstance(instr, Funcion):
+                self._registrar_firma(instr)
+        for instr in programa.instrucciones:
+            if isinstance(instr, Funcion):
+                self._funcion(instr)
+            else:
+                self._instruccion(instr)
+        self._advertir_no_usadas(self.tabla.actual)
+        return ResultadoSemantico(self.tabla, self.coerciones, self.funciones)
+
+    # ---------------------------------------------------------------- funciones
+    def _registrar_firma(self, n: Funcion) -> None:
+        if n.nombre in self.funciones:
+            previa = self.funciones[n.nombre]
+            self._error(f"La función '{n.nombre}' ya fue declarada (L:{previa.linea})", n)
+            return
+        self.funciones[n.nombre] = InfoFuncion(n.nombre, n.tipo_retorno, [p.tipo for p in n.parametros],
+                                               n.linea, n.columna)
+
+    def _funcion(self, n: Funcion) -> None:
+        info = self.funciones.get(n.nombre)
+        if info is None or info.linea != n.linea:  # duplicada: ya se reportó
+            return
+        self._funcion_actual = info
+        self.tabla.entrar_ambito(f"funcion {n.nombre}")
+        total = len(n.parametros)
+        for i, p in enumerate(n.parametros):
+            if self.tabla.buscar_local(p.nombre):
+                self._error(f"El parámetro '{p.nombre}' está repetido en '{n.nombre}'", p)
+                continue
+            # Convención de llamada: el último argumento apilado queda más cerca de FP
+            s = self.tabla.definir(p.nombre, p.tipo, p.linea, p.columna, funcion=n.nombre,
+                                   desplazamiento=16 + 8 * (total - 1 - i), es_parametro=True)
+            s.inicializado = s.usado = True
+            p.nombre_unico = s.nombre_unico
+            info.parametros.append(s.nombre_unico)
+        # El cuerpo comparte el ámbito de los parámetros (como en C)
+        for instr in n.cuerpo.instrucciones:
             self._instruccion(instr)
         self._advertir_no_usadas(self.tabla.actual)
-        return ResultadoSemantico(self.tabla, self.coerciones)
+        self.tabla.salir_ambito()
+        if info.tipo_retorno != "vacio" and not info.tiene_retorno:
+            self._error(f"La función '{n.nombre}' debe retornar un valor de tipo {info.tipo_retorno} "
+                        f"(no tiene ningún 'retornar')", n)
+        self._funcion_actual = None
+
+    def _definir_variable(self, nombre: str, tipo: str, nodo: Nodo) -> Simbolo:
+        f = self._funcion_actual
+        if f is None:
+            return self.tabla.definir(nombre, tipo, nodo.linea, nodo.columna)
+        s = self.tabla.definir(nombre, tipo, nodo.linea, nodo.columna, funcion=f.nombre,
+                               desplazamiento=-8 * (len(f.locales) + 1))
+        f.locales.append(s.nombre_unico)
+        return s
+
+    def _retornar(self, n: Retornar) -> None:
+        f = self._funcion_actual
+        if f is None:
+            self._error("'retornar' solo puede usarse dentro de una función", n)
+            if n.valor is not None:
+                self._expresion(n.valor)
+            return
+        f.tiene_retorno = True
+        if f.tipo_retorno == "vacio":
+            if n.valor is not None:
+                self._expresion(n.valor)
+                self._error(f"La función '{f.nombre}' es vacio: 'retornar' no puede llevar un valor", n)
+            return
+        if n.valor is None:
+            self._error(f"La función '{f.nombre}' debe retornar un valor de tipo {f.tipo_retorno}", n)
+            return
+        tipo = self._expresion(n.valor)
+        n.valor = self._verificar_asignable(f.tipo_retorno, n.valor, tipo, f.nombre, n,
+                                            contexto=f"El valor retornado por '{f.nombre}'")
+
+    def _llamada(self, n: Llamada) -> str:
+        f = self.funciones.get(n.nombre)
+        tipos = [self._expresion(a) for a in n.argumentos]
+        if f is None:
+            self._error(f"La función '{n.nombre}' no ha sido declarada", n)
+            return ERROR
+        f.usada = True
+        if len(n.argumentos) != len(f.tipos_parametros):
+            self._error(f"La función '{n.nombre}' espera {len(f.tipos_parametros)} argumento(s), "
+                        f"pero recibió {len(n.argumentos)}", n)
+            return f.tipo_retorno
+        for i, (arg, tipo, esperado) in enumerate(zip(n.argumentos, tipos, f.tipos_parametros)):
+            n.argumentos[i] = self._verificar_asignable(
+                esperado, arg, tipo, n.nombre, arg, contexto=f"El argumento {i + 1} de '{n.nombre}'")
+        return f.tipo_retorno
+
+    def _liberar(self, n: Liberar) -> None:
+        tipo = self._expresion(n.variable)
+        if tipo not in (ERROR, "texto"):
+            self._error(f"Solo se puede liberar un texto (memoria del heap); "
+                        f"'{n.variable.nombre}' es {tipo}", n)
 
     def _error(self, mensaje: str, nodo: Nodo) -> None:
         self.reporte.error(SEMANTICO, mensaje, nodo.linea, nodo.columna)
 
     # ------------------------------------------------------------ instrucciones
     def _instruccion(self, n: Nodo) -> None:
-        if isinstance(n, Declaracion):
+        if isinstance(n, Retornar):
+            self._retornar(n)
+        elif isinstance(n, Liberar):
+            self._liberar(n)
+        elif isinstance(n, InstruccionExpresion):
+            self._expresion(n.expresion, permitir_vacio=True)
+        elif isinstance(n, Funcion):
+            pass  # función dentro de un bloque: el parser ya reportó el error
+        elif isinstance(n, Declaracion):
             self._declaracion(n)
         elif isinstance(n, Asignacion):
             self._asignacion(n)
@@ -186,7 +343,7 @@ class AnalizadorSemantico:
 
     def _advertir_no_usadas(self, ambito: Ambito) -> None:
         for s in ambito.simbolos.values():
-            if not s.usado:
+            if not s.usado and not s.es_parametro:
                 self.reporte.advertencia(f"La variable '{s.nombre}' se declaró pero nunca se usa", s.linea, s.columna)
 
     def _declaracion(self, n: Declaracion) -> None:
@@ -206,7 +363,7 @@ class AnalizadorSemantico:
                 f"La variable '{n.nombre}' oculta a la declarada en el ámbito '{externa.ambito}' (L:{externa.linea})",
                 n.linea, n.columna)
 
-        simbolo = self.tabla.definir(n.nombre, n.tipo_declarado, n.linea, n.columna)
+        simbolo = self._definir_variable(n.nombre, n.tipo_declarado, n)
         simbolo.inicializado = n.valor is not None
         n.nombre_unico = simbolo.nombre_unico
 
@@ -220,13 +377,19 @@ class AnalizadorSemantico:
         simbolo.inicializado = True
         n.nombre_unico = simbolo.nombre_unico
 
-    def _verificar_asignable(self, destino: str, expr: Expresion, origen: str, nombre: str, nodo: Nodo) -> Expresion:
+    def _verificar_asignable(self, destino: str, expr: Expresion, origen: str, nombre: str, nodo: Nodo,
+                             contexto: Optional[str] = None) -> Expresion:
+        """`contexto` describe un argumento o un retorno ("El argumento 1 de 'f'")."""
         if origen == ERROR or destino == origen:
             return expr
         if destino == "real" and origen == "entero":
-            self.coerciones.append(f"L:{nodo.linea} — '{nombre}': valor entero convertido implícitamente a real")
+            quien = contexto or f"'{nombre}'"
+            self.coerciones.append(f"L:{nodo.linea} — {quien}: valor entero convertido implícitamente a real")
             return Conversion(expr, expr.linea, expr.columna)
-        if destino == "entero" and origen == "real":
+        if contexto:
+            extra = " (posible pérdida de precisión)" if (destino, origen) == ("entero", "real") else ""
+            self._error(f"{contexto} debe ser {destino}, pero se recibió un valor {origen}{extra}", nodo)
+        elif destino == "entero" and origen == "real":
             self._error(f"No se puede asignar un valor real a '{nombre}' (entero): posible pérdida de precisión", nodo)
         else:
             self._error(f"Tipos incompatibles: no se puede asignar un valor {origen} a '{nombre}' ({destino})", nodo)
@@ -238,8 +401,11 @@ class AnalizadorSemantico:
             self._error(f"La condición de '{palabra}' debe ser booleana, pero es de tipo {tipo}", expr)
 
     # -------------------------------------------------------------- expresiones
-    def _expresion(self, n: Expresion) -> str:
+    def _expresion(self, n: Expresion, permitir_vacio: bool = False) -> str:
         n.tipo = self._inferir(n)
+        if n.tipo == "vacio" and not permitir_vacio:
+            self._error(f"La función '{n.nombre}' es vacio: no devuelve un valor que se pueda usar", n)
+            n.tipo = ERROR
         return n.tipo
 
     def _inferir(self, n: Expresion) -> str:
@@ -268,6 +434,8 @@ class AnalizadorSemantico:
             return ERROR
         if isinstance(n, Binaria):
             return self._binaria(n)
+        if isinstance(n, Llamada):
+            return self._llamada(n)
         if isinstance(n, Conversion):
             return "real"
         return ERROR
