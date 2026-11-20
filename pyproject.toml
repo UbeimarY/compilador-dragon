@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "compilador-dragon"
+version = "1.0.0"
+description = "Compilador del lenguaje Dragon: Tokens → AST → Semántico → TAC → Optimización → Ensamblador"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = []
+keywords = ["compilador", "lexer", "parser", "tac", "ensamblador", "educativo"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Natural Language :: Spanish",
+    "Topic :: Software Development :: Compilers",
+    "Topic :: Education",
+]
+
+[project.urls]
+Repositorio = "https://github.com/UbeimarY/compilador-dragon"
+
+[project.scripts]
+dragon = "dragon.cli:main"
+
+[tool.setuptools]
+packages = ["dragon"]

@@ -6,3 +6,6 @@ venv/
 .idea/
 salida/
 .DS_Store
+build/
+dist/
+*.egg-info/
