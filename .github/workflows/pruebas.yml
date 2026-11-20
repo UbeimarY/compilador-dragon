@@ -1,0 +1,53 @@
+name: Pruebas
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pruebas:
+    name: Python ${{ matrix.python }} · ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python: ["3.10", "3.11", "3.12", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Pruebas automáticas (unittest)
+        run: python -m unittest -v
+
+      - name: Compilar los programas de ejemplo
+        shell: bash
+        run: |
+          set -u
+          esperar() {  # esperar <código esperado> <archivo> [opciones...]
+            esperado=$1; shift
+            python main.py "$@" --sin-color > salida.txt; codigo=$?
+            tail -n 2 salida.txt
+            if [ "$codigo" -ne "$esperado" ]; then
+              echo "::error::$* terminó con código $codigo (se esperaba $esperado)"; exit 1
+            fi
+            if grep -q "Traceback\|ERROR INTERNO" salida.txt; then
+              echo "::error::$* produjo un error interno"; exit 1
+            fi
+          }
+          esperar 0 ejemplos/programa_correcto.drg
+          esperar 0 ejemplos/programa_registros.drg --registros 2
+          esperar 1 ejemplos/programa_estres.drg
+          esperar 1 ejemplos/errores/error_lexico.drg
+          esperar 1 ejemplos/errores/error_sintactico.drg
+          esperar 1 ejemplos/errores/error_semantico.drg
+          grep -q "la semántica se preservó" <(python main.py ejemplos/programa_correcto.drg --sin-color)
