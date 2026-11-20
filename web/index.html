@@ -136,9 +136,14 @@
           <option value="ejemplos/programa_correcto.drg">Combate contra el dragón</option>
           <option value="ejemplos/programa_estres.drg">Estrés: 16 errores</option>
           <option value="ejemplos/programa_registros.drg">Presión de registros (spill)</option>
+          <option value="ejemplos/programa_funciones.drg">Funciones y recursión</option>
+          <option value="ejemplos/programa_memoria.drg">Heap: reservar, liberar, fugas</option>
           <option value="ejemplos/errores/error_lexico.drg">Errores léxicos</option>
           <option value="ejemplos/errores/error_sintactico.drg">Errores sintácticos</option>
           <option value="ejemplos/errores/error_semantico.drg">Errores semánticos</option>
+          <option value="ejemplos/errores/error_funciones.drg">Errores con funciones</option>
+          <option value="ejemplos/errores/error_memoria.drg">Error en ejecución: dangling pointer</option>
+          <option value="ejemplos/errores/error_recursion.drg">Error en ejecución: Stack Overflow</option>
         </select>
       </label>
       <label>Registros
@@ -146,7 +151,14 @@
           <option>2</option><option selected>3</option><option>4</option><option>6</option><option>8</option>
         </select>
       </label>
+      <label>Asignador
+        <select id="asignador">
+          <option value="belady" selected>Belady (local)</option>
+          <option value="coloreo">Coloreo (Chaitin-Briggs)</option>
+        </select>
+      </label>
       <label><input type="checkbox" id="optimizar" checked> Optimizar</label>
+      <label><input type="checkbox" id="automatas"> Autómatas</label>
       <button class="compilar" id="compilar" disabled>Compilar ▶</button>
     </div>
     <div class="editor">
@@ -176,10 +188,10 @@
         integrity="sha384-i3R37b3tF+HWudsUf1VSEOY2YxwSNMqY8DQa9Z0O3xh+NkJ9o+yjcGyIi5huj+nB"
         crossorigin="anonymous"></script>
 <script>
-const MODULOS = ["__init__", "ast_nodos", "cli", "codegen", "emulador", "errores", "lexer",
-                 "optimizador", "parser", "semantico", "tac", "utilidades"];
+const MODULOS = ["__init__", "ast_nodos", "automatas", "cli", "codegen", "coloreo", "emulador", "errores",
+                 "flujo", "interprete", "lexer", "optimizador", "parser", "semantico", "tac", "utilidades"];
 const FASES = [
-  ["1", "Tokens"], ["2", "AST"], ["3", "Semántico"], ["4", "TAC"],
+  ["1", "Tokens"], ["automatas", "Autómatas"], ["2", "AST"], ["3", "Semántico"], ["4", "TAC"],
   ["5", "Optimización"], ["6", "Ensamblador"], ["7", "Ejecución"], ["errores", "Errores"],
 ];
 
@@ -261,12 +273,14 @@ const PY_COMPILAR = `
 import io, contextlib, re, json
 from dragon.cli import main as _main
 
-def _compilar(codigo, registros, optimizar):
+def _compilar(codigo, registros, optimizar, asignador, automatas):
     with open("programa.drg", "w", encoding="utf-8") as f:
         f.write(codigo)
-    args = ["programa.drg", "--sin-color", "--registros", str(registros)]
+    args = ["programa.drg", "--sin-color", "--registros", str(registros), "--asignador", asignador]
     if not optimizar:
         args.append("--sin-optimizar")
+    if automatas:
+        args.append("--automatas")
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
         codigo_salida = _main(args)
@@ -283,7 +297,8 @@ def _compilar(codigo, registros, optimizar):
             m = re.search(r"FASE (\\d)", titulo)
             if clave is not None:
                 secciones[clave] = "\\n".join(actual).strip("\\n")
-            clave = m.group(1) if m else ("errores" if "ERRORES" in titulo else titulo.strip())
+            clave = m.group(1) if m else ("errores" if "ERRORES" in titulo
+                                          else "automatas" if "AUTÓMATAS" in titulo else titulo.strip())
             actual = [titulo.strip(), ""]
             i += 3
             continue
@@ -303,6 +318,8 @@ def _compilar(codigo, registros, optimizar):
             metricas["spills"] = limpia.split()[0]
         elif limpia.startswith("Compilación detenida:"):
             metricas["errores"] = limpia.split()[2]
+        elif limpia.startswith("[ERROR DE EJECUCIÓN]"):
+            metricas["ejecucion"] = limpia[len("[ERROR DE EJECUCIÓN] "):].split(" (instrucción")[0]
 
     errores = re.findall(r"^\\[(LÉXICO|SINTÁCTICO|SEMÁNTICO|ADVERTENCIA)\\] L:(\\d+) C:(\\d+) — (.*)$", texto, re.M)
     return json.dumps({"codigo": codigo_salida, "secciones": secciones, "errores": errores,
@@ -337,6 +354,11 @@ async function cargarEjemplo() {
 $("ejemplo").addEventListener("change", async () => { await cargarEjemplo(); if (pyodide) compilar(); });
 $("registros").addEventListener("change", () => pyodide && compilar());
 $("optimizar").addEventListener("change", () => pyodide && compilar());
+$("asignador").addEventListener("change", () => pyodide && compilar());
+$("automatas").addEventListener("change", () => {
+  if ($("automatas").checked) activa = "automatas";
+  if (pyodide) compilar();
+});
 $("compilar").addEventListener("click", () => compilar());
 
 function compilar() {
@@ -345,7 +367,8 @@ function compilar() {
   let r;
   try {
     const f = pyodide.globals.get("_compilar");
-    r = JSON.parse(f(codigo.value, Number($("registros").value), $("optimizar").checked));
+    r = JSON.parse(f(codigo.value, Number($("registros").value), $("optimizar").checked,
+                     $("asignador").value, $("automatas").checked));
     f.destroy();
   } catch (err) {
     estado("mal", "Error interno: " + err.message);
@@ -374,9 +397,13 @@ function compilar() {
     if (m.tac_antes) partes.push(`TAC ${m.tac_antes}→${m.tac_despues}`);
     partes.push(`${m.spills ?? 0} spills`);
     partes.push(`${ms} ms`);
-    estado(preservada ? "ok" : "mal",
-           preservada ? "Compilación exitosa · semántica preservada" : "Compilado, pero las ejecuciones difieren",
-           partes.join(" · "));
+    if (m.ejecucion) {
+      estado("mal", `Compiló, pero falló al ejecutarse: ${m.ejecucion}`, partes.join(" · "));
+    } else {
+      estado(preservada ? "ok" : "mal",
+             preservada ? "Compilación exitosa · semántica preservada" : "Compilado, pero las ejecuciones difieren",
+             partes.join(" · "));
+    }
   }
   dibujarPestanas(hayErrores, !hayErrores);
   mostrar();
