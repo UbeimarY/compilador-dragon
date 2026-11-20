@@ -262,6 +262,9 @@ class GeneradorCodigo:
             marcos=list(self.marcos),
         )
 
+    def _preparar_segmento(self, indices: range) -> None:
+        """Gancho para otros asignadores de registros (ver coloreo.py)."""
+
     def _segmento(self, indices: range, funcion: Optional[str]) -> list[InstruccionASM]:
         """Traduce el programa principal o una función, con su propio marco de pila."""
         self.contenido = {r: None for r in self.registros}
@@ -274,6 +277,7 @@ class GeneradorCodigo:
             self.eventos.append(f"── función {funcion} " + "─" * 30)
 
         self.salida = []
+        self._preparar_segmento(indices)
         for i in indices:
             self._i = i
             self._traducir(self.p.instrucciones[i])
@@ -462,5 +466,8 @@ class GeneradorCodigo:
         self._guardar_resultado(q, reg)
 
 
-def generar_codigo(programa: ProgramaTAC, num_registros: int = 3) -> CodigoObjetivo:
+def generar_codigo(programa: ProgramaTAC, num_registros: int = 3, asignador: str = "belady") -> CodigoObjetivo:
+    if asignador == "coloreo":
+        from .coloreo import GeneradorCodigoColoreo
+        return GeneradorCodigoColoreo(programa, num_registros).generar()
     return GeneradorCodigo(programa, num_registros).generar()

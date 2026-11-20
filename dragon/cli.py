@@ -11,6 +11,7 @@ Opciones:
     --sin-optimizar   Genera el ensamblador directamente desde el TAC sin optimizar
     --automatas       Muestra los autómatas del lexer: RegEx → NFA → DFA → DFA mínimo
     --interpretar     Ejecuta el programa con el intérprete del AST (sin compilarlo)
+    --asignador X     Asignación de registros: belady (local, por defecto) o coloreo (Chaitin-Briggs)
     --fases 1,4,6     Muestra solo las fases indicadas (1 a 7)
     --sin-color       Desactiva los colores de la consola
     --salida DIR      Carpeta donde se guardan los archivos .tac y .asm (por defecto: salida/)
@@ -217,11 +218,12 @@ def compilar(ruta: Path, carpeta_salida: str, args: argparse.Namespace) -> int:
 
     # ------------------------------------------------------------ FASE 6
     base_codigo = tac if args.sin_optimizar else tac_optimizado
-    codigo = generar_codigo(base_codigo, args.registros)
+    codigo = generar_codigo(base_codigo, args.registros, args.asignador)
     if ver(6):
         titulo(6, f"GENERACIÓN DE CÓDIGO OBJETIVO ({args.registros} registros: "
                   f"{', '.join(f'R{i}' for i in range(args.registros))})")
-        subtitulo("Asignación de registros (análisis de vida + spill)")
+        subtitulo("Asignación de registros: coloreo de grafos (Chaitin-Briggs)" if args.asignador == "coloreo"
+                  else "Asignación de registros (análisis de vida + spill, criterio de Belady)")
         print("\n".join(codigo.eventos) or "(no se necesitaron temporales en registros)")
         estado = Color.aviso(f"{codigo.spills} spill(s) → marco de pila de {codigo.tamanio_marco} bytes") \
             if codigo.spills else Color.ok("0 spills: todos los temporales cupieron en registros")
@@ -290,6 +292,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("archivo", help="programa fuente .drg")
     parser.add_argument("--registros", type=int, default=3, help="registros físicos disponibles (mínimo 2)")
     parser.add_argument("--sin-optimizar", action="store_true", help="no optimizar antes de generar ensamblador")
+    parser.add_argument("--asignador", choices=["belady", "coloreo"], default="belady",
+                        help="algoritmo de asignación de registros")
     parser.add_argument("--interpretar", action="store_true", help="ejecutar con el intérprete del AST, sin compilar")
     parser.add_argument("--automatas", action="store_true", help="mostrar los autómatas del lexer (NFA, DFA, DFA mínimo)")
     parser.add_argument("--fases", help="fases a mostrar, separadas por comas (1-7)")
