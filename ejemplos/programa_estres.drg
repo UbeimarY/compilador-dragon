@@ -1,0 +1,41 @@
+// ================================================================
+//  programa_estres.drg — Caso de prueba 2: escenario de estrés
+//  Valida que el compilador detecta y reporta con línea y columna
+//  errores LÉXICOS, SINTÁCTICOS y SEMÁNTICOS sin detenerse en el
+//  primero: todos se reportan en una sola compilación.
+// ================================================================
+
+entero vida = 100;
+real armadura = 12.5;
+texto arma = "Espada";
+booleano escudo = verdadero;
+
+// ---------------- Errores léxicos ----------------
+entero mana = 50 @ 2;              // '@' no pertenece al alfabeto
+entero 2golpes = 4;                // identificador que empieza con dígito
+
+// ---------------- Errores sintácticos -------------
+entero oro = 30                    // falta ';'
+vida = vida - ;                    // falta el operando derecho
+
+// ---------------- Errores semánticos --------------
+vida = vida - "Fuego";             // entero - texto
+vida = armadura;                   // real → entero: pérdida de precisión
+entero vida = 5;                   // redeclaración en el mismo ámbito
+pocion = 3;                        // variable no declarada
+si (vida) {                        // la condición debe ser booleana
+    imprimir(arma);
+}
+{
+    entero secreto = 7;
+    imprimir(secreto);
+}
+imprimir(secreto);                 // fuera de su ámbito
+imprimir(vida / 0);                // división por cero
+imprimir(escudo + 1);              // booleano + entero
+imprimir(arma * 2);                // texto * entero
+mientras (armadura % 2 == 0) {     // '%' solo entre enteros
+    armadura = armadura - 1;
+}
+imprimir(!vida);                   // '!' requiere booleano
+imprimir(escudo && vida > 0 || arma);  // '||' requiere booleanos

@@ -1,0 +1,8 @@
+// Errores LÉXICOS: el texto contiene "palabras" que no existen en el lenguaje.
+entero vida = 100;
+entero 2vida = 50;          // un identificador no puede empezar con dígito
+vida = vida # 3;            // '#' no pertenece al alfabeto
+texto grito = "¡Fuego!;     // cadena sin cerrar
+imprimir(vida);
+/* comentario que nunca se cierra
+imprimir(vida);

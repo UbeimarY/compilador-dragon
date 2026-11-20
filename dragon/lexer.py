@@ -124,6 +124,8 @@ class Lexer:
                 tokens.append(Token("CADENA", lexema, _desescapar(lexema[1:-1]), linea, columna))
             elif clase == "CADENA_ABIERTA":
                 self.reporte.error(LEXICO, "Cadena de texto sin cerrar (falta la comilla \")", linea, columna)
+                # Recuperación: se asume que la cadena termina al final de la línea
+                tokens.append(Token("CADENA", lexema, _desescapar(lexema[1:]), linea, columna))
             elif clase == "NUM_REAL":
                 tokens.append(Token("NUM_REAL", lexema, float(lexema), linea, columna))
             elif clase == "NUM_ENTERO":

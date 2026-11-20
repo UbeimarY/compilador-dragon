@@ -1,0 +1,11 @@
+// Errores SEMÁNTICOS: léxica y sintácticamente perfecto, pero sin sentido.
+// "La nevera se tomó el café": la estructura es válida, el significado no.
+entero vida = 100;
+texto hechizo = "Fuego";
+vida = vida - hechizo;      // no se puede restar texto a un entero
+entero dano = 7.5;          // real → entero: pérdida de precisión
+vida = vida - escudo;       // 'escudo' nunca fue declarada
+si (vida + 1) {             // la condición debe ser booleana
+    entero temporal = 1;
+}
+temporal = 2;               // 'temporal' ya no existe fuera del bloque

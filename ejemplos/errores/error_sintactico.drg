@@ -1,0 +1,8 @@
+// Errores SINTÁCTICOS: las palabras existen, pero el orden rompe la gramática.
+entero vida = 100
+entero mana = (vida + 5;
+si vida > 0 { imprimir(vida); }
+mientras (mana > 0) { mana = mana - 10 }
+vida 10;
+sino { imprimir(0); }
+imprimir("fin");

@@ -1,0 +1,31 @@
+// ================================================================
+//  programa_registros.drg — Presión sobre los registros (SPILL)
+//  Expresiones con muchos resultados parciales vivos al mismo
+//  tiempo. Con 3 registros (R0, R1, R2) no alcanzan y el generador
+//  debe desalojar temporales a la pila. Pruebe también:
+//      python main.py ejemplos/programa_registros.drg --registros 2
+//      python main.py ejemplos/programa_registros.drg --registros 6
+// ================================================================
+
+entero a = 7;  entero b = 3;  entero c = 10; entero d = 4;
+entero e = 2;  entero f = 9;  entero g = 5;  entero h = 1;
+entero ronda = 0;
+
+mientras (ronda < 2) {
+    // Fórmula de daño combinado: 8 sumas/restas vivas a la vez
+    entero formula = (a + b) * (c + d) - (e + f) * (g + h)
+                   + (a - b) * ((c - d) * (e - f) + (g - h) * (a + h));
+    imprimir(formula);
+
+    // Mezcla de enteros y reales (coerción) con operador unario
+    real energia = (a + b) / (c * 1.0) + (d - e) * 2.5 - -(f % g);
+    imprimir(energia);
+
+    // Expresión lógica con comparaciones anidadas
+    booleano combo = (a > b && c != d) || !(e >= f) && (g <= h);
+    imprimir(combo);
+
+    a = a + ronda;
+    h = h + 1;
+    ronda = ronda + 1;
+}

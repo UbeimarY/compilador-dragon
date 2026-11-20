@@ -34,7 +34,7 @@ puede reportar varios errores sintácticos en una sola compilación.
 from .ast_nodos import (Asignacion, Binaria, Bloque, Declaracion, Expresion,
                         Imprimir, Literal, Mientras, Nodo, Programa, Si,
                         Unaria, Variable)
-from .errores import SINTACTICO, ReporteErrores
+from .errores import LEXICO, SINTACTICO, ReporteErrores
 from .lexer import Token
 
 NOMBRES_LEGIBLES = {
@@ -68,6 +68,13 @@ class Parser:
         self.tokens = tokens
         self.reporte = reporte
         self.pos = 0
+        # Líneas con errores léxicos: allí el error sintáctico es solo una
+        # consecuencia (el lexer descartó caracteres), así que no se repite.
+        self._lineas_con_error_lexico = {e.linea for e in reporte.de_fase(LEXICO)}
+
+    def _reportar(self, mensaje: str, linea: int, columna: int) -> None:
+        if linea not in self._lineas_con_error_lexico:
+            self.reporte.error(SINTACTICO, mensaje, linea, columna)
 
     # ------------------------------------------------------------ utilidades
     @property
@@ -88,7 +95,7 @@ class Parser:
 
     def _error(self, mensaje: str, token: Token | None = None) -> ErrorSintactico:
         token = token or self.actual
-        self.reporte.error(SINTACTICO, mensaje, token.linea, token.columna)
+        self._reportar(mensaje, token.linea, token.columna)
         return ErrorSintactico(mensaje)
 
     def _consumir(self, tipo: str, contexto: str) -> Token:
@@ -99,8 +106,7 @@ class Parser:
         # virtualmente y el análisis continúa sin descartar la línea siguiente.
         if tipo == "PUNTO_COMA" or (tipo == "PAR_DER" and self._es("LLAVE_IZQ", "PUNTO_COMA")):
             previo = self._anterior()
-            self.reporte.error(
-                SINTACTICO,
+            self._reportar(
                 f"Falta {esperado} {contexto}",
                 previo.linea, previo.columna + len(previo.lexema),
             )
@@ -220,8 +226,7 @@ class Parser:
             if instr is not None:
                 instrucciones.append(instr)
         if self._es("EOF"):
-            self.reporte.error(
-                SINTACTICO,
+            self._reportar(
                 f"Bloque abierto en L:{apertura.linea} C:{apertura.columna} nunca se cerró (falta '}}')",
                 self.actual.linea, self.actual.columna,
             )
